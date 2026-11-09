@@ -131,7 +131,8 @@ app.get('/api/status', (req, res) => {
     timestamp: new Date().toISOString(),
     dbConnected: mongoose.connection.readyState === 1,
     hasMongoUri: Boolean(process.env.MONGODB_URI),
-    hasGoogleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+    hasGoogleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    emailProvider: process.env.BREVO_API_KEY ? 'brevo' : (process.env.RESEND_API_KEY ? 'resend' : 'none')
   });
 });
 

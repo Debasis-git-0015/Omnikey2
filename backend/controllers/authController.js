@@ -160,7 +160,7 @@ export const forgotPassword = async (req, res, next) => {
       user.resetPasswordExpires = null;
       await user.save({ validateBeforeSave: false });
       return res.status(500).json({
-        error: mailErr.message || 'Unable to dispatch email via Resend. Please verify your Resend API configuration.'
+        error: mailErr.message || 'Unable to dispatch recovery email. Please check your email service configuration.'
       });
     }
   } catch (error) {

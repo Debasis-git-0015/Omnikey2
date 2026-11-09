@@ -4,16 +4,23 @@ import nodemailer from 'nodemailer';
 /**
  * Sends a stylized Password Reset email directly to the user's specified email address.
  * Priority:
- *  1. SMTP (Gmail App Password or Generic SMTP like Brevo/Sendinblue) -> delivers to ANY email address with 0 domain restrictions.
- *  2. Resend API -> delivers to any email if custom domain is verified on Resend, or to the account owner.
+ *  1. Brevo (Sendinblue) REST API (BREVO_API_KEY) -> Delivers to ANY email without domain restrictions or SMTP port blocking.
+ *  2. SMTP (Brevo SMTP / Gmail App Password / Custom SMTP).
+ *  3. Resend API (RESEND_API_KEY) -> Fallback.
  */
 export const sendPasswordResetEmail = async ({ toEmail, userName, resetUrl }) => {
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+  const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || 'drix.acc.0015@gmail.com').trim();
+  const brevoSenderName = process.env.BREVO_SENDER_NAME || 'Omnikey Security';
+
   const emailUser = process.env.EMAIL_USER;
   const emailPass = process.env.EMAIL_PASS;
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = process.env.SMTP_PORT || 587;
   const smtpUser = process.env.SMTP_USER || emailUser;
   const smtpPass = process.env.SMTP_PASS || emailPass;
+
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
 
   // Check if Gmail SMTP credentials are provided and not a placeholder
   const isGmailConfigured = Boolean(
@@ -23,7 +30,7 @@ export const sendPasswordResetEmail = async ({ toEmail, userName, resetUrl }) =>
     emailPass.trim().length >= 8
   );
 
-  // Check if custom SMTP (e.g. Brevo, SendGrid, Mailgun) is configured
+  // Check if custom SMTP (e.g. Brevo SMTP, SendGrid, Mailgun) is configured
   const isCustomSmtpConfigured = Boolean(
     smtpHost && 
     smtpUser && 
@@ -90,7 +97,64 @@ export const sendPasswordResetEmail = async ({ toEmail, userName, resetUrl }) =>
     </html>
   `;
 
-  // 1. PRIMARY: If Gmail SMTP App Password or Custom SMTP is configured
+  // 1. PRIMARY: Brevo REST API (HTTP API via https://api.brevo.com/v3/smtp/email)
+  if (brevoApiKey && !brevoApiKey.includes('your_')) {
+    try {
+      console.log(`[Brevo API] Dispatching recovery email to ${toEmail} from ${brevoSenderEmail}...`);
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoApiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: {
+            name: brevoSenderName,
+            email: brevoSenderEmail
+          },
+          to: [
+            {
+              email: toEmail,
+              name: userName || 'Omnikey User'
+            }
+          ],
+          subject: '🔐 Reset Your Omnikey Master Password',
+          htmlContent: generateHtml(toEmail)
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        console.log(`[Brevo API Success] Email delivered to ${toEmail} with messageId: ${data.messageId}`);
+        return {
+          success: true,
+          deliveredTo: toEmail,
+          dispatcher: 'brevo-api',
+          messageId: data.messageId
+        };
+      }
+
+      console.error('[Brevo API Error response]:', data);
+      if (data.message && data.message.includes('unrecognised IP address')) {
+        throw new Error(
+          `Brevo IP Security blocked the request from this IP. Please visit https://app.brevo.com/security/authorised_ips and click "Deactivate blocking" (or authorize your IP) so Brevo allows API dispatches.`
+        );
+      } else if (data.message && (data.message.includes('sender') || data.code === 'invalid_parameter')) {
+        throw new Error(
+          `Brevo sender error: ${data.message}. Please verify that ${brevoSenderEmail} is registered in Brevo -> Senders & IP -> Senders.`
+        );
+      } else {
+        throw new Error(data.message || 'Failed to dispatch email via Brevo API');
+      }
+    } catch (brevoErr) {
+      console.error('[Brevo API Error]:', brevoErr.message);
+      throw brevoErr;
+    }
+  }
+
+  // 2. SECONDARY: SMTP Dispatcher (Gmail SMTP or Brevo SMTP Relay)
   if (isGmailConfigured || isCustomSmtpConfigured) {
     try {
       const transporter = isCustomSmtpConfigured
@@ -107,7 +171,7 @@ export const sendPasswordResetEmail = async ({ toEmail, userName, resetUrl }) =>
             service: 'gmail',
             auth: {
               user: emailUser.trim(),
-              pass: emailPass.trim().replace(/\s+/g, '') // remove spaces from 16-char app password
+              pass: emailPass.trim().replace(/\s+/g, '')
             }
           });
 
@@ -137,43 +201,40 @@ export const sendPasswordResetEmail = async ({ toEmail, userName, resetUrl }) =>
     }
   }
 
-  // 2. SECONDARY: Resend API Dispatcher
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM || 'Omnikey <onboarding@resend.dev>';
+  // 3. TERTIARY: Resend API Dispatcher
+  if (resendApiKey && !resendApiKey.includes('your_')) {
+    const fromEmail = process.env.RESEND_FROM || 'Omnikey <onboarding@resend.dev>';
+    const resend = new Resend(resendApiKey);
 
-  if (!apiKey) {
-    throw new Error('Email service configuration missing: Please set RESEND_API_KEY or SMTP credentials in backend/.env');
+    console.log(`[Resend API] Attempting to dispatch recovery email to ${toEmail} from ${fromEmail}...`);
+
+    const response = await resend.emails.send({
+      from: fromEmail,
+      to: [toEmail],
+      subject: '🔐 Reset Your Omnikey Master Password',
+      html: generateHtml(toEmail)
+    });
+
+    if (!response.error) {
+      console.log(`[Resend Success] Email delivered to ${toEmail} with ID: ${response.data?.id}`);
+      return {
+        success: true,
+        deliveredTo: toEmail,
+        dispatcher: 'resend',
+        messageId: response.data?.id
+      };
+    }
+
+    if (response.error.message && response.error.message.includes('only send testing emails to your own email address')) {
+      console.warn(`[Resend Sandbox Blocked] Cannot send to ${toEmail} using testing domain ${fromEmail}.`);
+      throw new Error(
+        `Resend's free testing domain (${fromEmail}) only delivers to your account owner (drix.acc.0015@gmail.com). Use Brevo API instead.`
+      );
+    }
+
+    console.error('[Resend Error]:', response.error);
+    throw new Error(response.error.message || 'Failed to dispatch email via Resend API');
   }
 
-  const resend = new Resend(apiKey);
-
-  console.log(`[Resend API] Attempting to dispatch recovery email to ${toEmail} from ${fromEmail}...`);
-
-  const response = await resend.emails.send({
-    from: fromEmail,
-    to: [toEmail],
-    subject: '🔐 Reset Your Omnikey Master Password',
-    html: generateHtml(toEmail)
-  });
-
-  if (!response.error) {
-    console.log(`[Resend Success] Email delivered to ${toEmail} with ID: ${response.data?.id}`);
-    return {
-      success: true,
-      deliveredTo: toEmail,
-      dispatcher: 'resend',
-      messageId: response.data?.id
-    };
-  }
-
-  // Handle Resend testing domain restriction
-  if (response.error.message && response.error.message.includes('only send testing emails to your own email address')) {
-    console.warn(`[Resend Sandbox Blocked] Cannot send to ${toEmail} using testing domain ${fromEmail}.`);
-    throw new Error(
-      `Resend's free testing domain (${fromEmail}) is restricted by Resend to only deliver to your account owner (drix.acc.0015@gmail.com). To send directly to "${toEmail}", either: 1) Enable 2-Step Verification and add a Gmail App Password in backend/.env, or 2) Use Brevo free SMTP (no domain required), or 3) Verify a custom domain on resend.com.`
-    );
-  }
-
-  console.error('[Resend Error]:', response.error);
-  throw new Error(response.error.message || 'Failed to dispatch email via Resend API');
+  throw new Error('Email service configuration missing: Please set BREVO_API_KEY, RESEND_API_KEY, or SMTP credentials in your environment variables.');
 };
