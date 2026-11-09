@@ -53,9 +53,13 @@ export const register = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Registration controller error:', error);
-    return res.status(500).json({
-      error: 'Registration failed. Please ensure database connection is active and retry.'
-    });
+    let errorMessage = 'Registration failed due to database server error';
+    if (!process.env.MONGODB_URI) {
+      errorMessage = 'Database configuration missing. Please add MONGODB_URI in your Render environment variables.';
+    } else if (error.name === 'MongooseServerSelectionError' || error.message?.includes('timed out') || error.message?.includes('whitelist')) {
+      errorMessage = 'Database connection timed out. Please allow IP 0.0.0.0/0 in MongoDB Atlas Network Access.';
+    }
+    return res.status(500).json({ error: errorMessage });
   }
 };
 
@@ -96,7 +100,13 @@ export const login = async (req, res, next) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   } catch (error) {
     console.error('Login controller error:', error);
-    return res.status(500).json({ error: 'Login failed due to database server error' });
+    let errorMessage = 'Login failed due to database server error';
+    if (!process.env.MONGODB_URI) {
+      errorMessage = 'Database configuration missing. Please add MONGODB_URI in your Render environment variables.';
+    } else if (error.name === 'MongooseServerSelectionError' || error.message?.includes('timed out') || error.message?.includes('whitelist')) {
+      errorMessage = 'Database connection timed out. Please allow IP 0.0.0.0/0 in MongoDB Atlas Network Access.';
+    }
+    return res.status(500).json({ error: errorMessage });
   }
 };
 

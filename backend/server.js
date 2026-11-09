@@ -129,7 +129,9 @@ app.get('/api/status', (req, res) => {
     status: 'healthy',
     message: 'Omnikey Administrator Backend API is running successfully',
     timestamp: new Date().toISOString(),
-    dbConnected: mongoose.connection.readyState === 1
+    dbConnected: mongoose.connection.readyState === 1,
+    hasMongoUri: Boolean(process.env.MONGODB_URI),
+    hasGoogleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
   });
 });
 

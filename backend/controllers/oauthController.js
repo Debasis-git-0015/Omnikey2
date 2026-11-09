@@ -96,8 +96,9 @@ const resolveCallbackUrl = (req, provider) => {
   const envCallback = process.env[`${provider.toUpperCase()}_CALLBACK_URL`];
   if (envCallback) return envCallback;
 
-  const host = req.get('host');
-  const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const host = req.get('host') || 'localhost:8080';
+  const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+  const protocol = isLocal ? (req.protocol || 'http') : 'https';
   return `${protocol}://${host}/api/auth/oauth/${provider}/callback`;
 };
 
