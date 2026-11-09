@@ -152,7 +152,7 @@ app.use('/api/vault', vaultRoutes);
 
 // Conditionally listen if not executing in serverless Vercel function or testing suite
 if (process.env.NODE_ENV !== 'test' && (process.env.NODE_ENV !== 'production' || !process.env.VERCEL)) {
-  const server = app.listen(PORT, async () => {
+  const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`Omnikey Administrator backend server running on port ${PORT}`);
     try {
       await connectDB();
