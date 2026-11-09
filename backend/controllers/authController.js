@@ -110,6 +110,39 @@ export const login = async (req, res, next) => {
   }
 };
 
+// Helper to resolve the correct frontend client URL dynamically (supports cloud deployments like Render)
+const resolveClientUrl = (req) => {
+  // If an explicit cloud CLIENT_URL is provided in env (not localhost), prioritize it
+  if (process.env.CLIENT_URL && !process.env.CLIENT_URL.includes('localhost') && !process.env.CLIENT_URL.includes('127.0.0.1')) {
+    return process.env.CLIENT_URL.replace(/\/+$/, '');
+  }
+
+  // 1. Check Origin header from the browser request
+  const origin = req.get('origin');
+  if (origin && (origin.startsWith('http://') || origin.startsWith('https://'))) {
+    return origin.replace(/\/+$/, '');
+  }
+
+  // 2. Check Referer header
+  const referer = req.get('referer');
+  if (referer) {
+    try {
+      const parsed = new URL(referer);
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch (e) {}
+  }
+
+  // 3. Fallback to Host header with proper protocol
+  const host = req.get('host');
+  if (host) {
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocal ? (req.protocol || 'http') : 'https';
+    return `${protocol}://${host}`;
+  }
+
+  return process.env.CLIENT_URL || 'http://localhost:3000';
+};
+
 // @desc    Forgot Password password reset trigger
 // @route   POST /api/auth/forgot-password
 // @access  Public
@@ -121,7 +154,7 @@ export const forgotPassword = async (req, res, next) => {
     return res.status(400).json({ error: 'Please enter a valid email address' });
   }
 
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  const clientUrl = resolveClientUrl(req);
 
   try {
     if (mongoose.connection.readyState !== 1) {

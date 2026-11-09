@@ -80,12 +80,24 @@ const resolveFrontendOrigin = (req, stateOrigin) => {
     } catch (e) {}
   }
 
+  // If explicit cloud CLIENT_URL is provided in env and not localhost, use it
+  if (process.env.CLIENT_URL && !process.env.CLIENT_URL.includes('localhost') && !process.env.CLIENT_URL.includes('127.0.0.1')) {
+    return process.env.CLIENT_URL.replace(/\/+$/, '');
+  }
+
   const referer = req.headers.referer;
   if (referer) {
     try {
       const parsed = new URL(referer);
       return parsed.origin;
     } catch (e) {}
+  }
+
+  const host = req.get('host');
+  if (host) {
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocal ? (req.protocol || 'http') : 'https';
+    return `${protocol}://${host}`;
   }
 
   return process.env.CLIENT_URL || 'http://localhost:5173';
