@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Omnikey Password Manager & Smart Autofill",
-  "version": "2.3.0",
-  "description": "Smart autofill extension: enters Master Password, searches that email's vault, and shows all matching passwords for any specific website.",
+  "version": "2.4.0",
+  "description": "Smart Google-style autofill extension: user enters only Master Password, auto-resolves browser profile email, and directly autofills website credentials.",
   "permissions": [
     "activeTab",
     "scripting",

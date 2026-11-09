@@ -10,7 +10,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const domainBadgeEl = document.getElementById('domain-badge');
 
   const formUnlock = document.getElementById('form-unlock');
-  const inputEmail = document.getElementById('input-email');
   const inputMasterPassword = document.getElementById('input-master-password');
   const btnTogglePassword = document.getElementById('btn-toggle-password');
   const eyeIcon = document.getElementById('eye-icon');
@@ -144,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function showLockedView(prefillEmail = '') {
+  function showLockedView() {
     stateLocked.classList.remove('hidden');
     stateUnlocked.classList.add('hidden');
 
@@ -152,18 +151,10 @@ document.addEventListener('DOMContentLoaded', () => {
     btnLock.classList.add('hidden');
     btnLogout.classList.add('hidden');
 
-    if (inputEmail && prefillEmail) {
-      inputEmail.value = prefillEmail;
-    }
     inputMasterPassword.value = '';
     btnUnlockSubmit.disabled = false;
-    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
-
-    if (inputEmail && !inputEmail.value) {
-      setTimeout(() => inputEmail.focus(), 100);
-    } else {
-      setTimeout(() => inputMasterPassword.focus(), 100);
-    }
+    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
+    setTimeout(() => inputMasterPassword.focus(), 100);
   }
 
   function showUnlockedView(user, items) {
@@ -299,24 +290,98 @@ document.addEventListener('DOMContentLoaded', () => {
     return card;
   }
 
-  function triggerAutofill(item) {
-    if (!activeTabId) return;
+  async function triggerAutofill(item) {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const targetTab = tabs && tabs[0];
+    if (!targetTab || !targetTab.id) {
+      showToast('Please open an active webpage to autofill', 'error');
+      return;
+    }
 
-    chrome.tabs.sendMessage(activeTabId, {
-      action: 'autofill',
-      data: {
-        username: item.username || item.email || '',
-        email: item.email || item.username || '',
-        password: item.password || ''
+    const fillData = {
+      username: item.username || item.email || '',
+      email: item.email || item.username || '',
+      password: item.password || ''
+    };
+
+    // Direct in-page injection function executed right inside the tab's DOM
+    function inPageFill(payload) {
+      const { username, email, password } = payload || {};
+      const targetUser = username || email || '';
+
+      const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'));
+      const textInputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'));
+
+      function isUserField(el) {
+        const str = ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.placeholder || '') + ' ' + (el.getAttribute('autocomplete') || '')).toLowerCase();
+        return el.type === 'email' || str.includes('user') || str.includes('email') || str.includes('login') || str.includes('txtusername') || str.includes('txtuser') || str.includes('id');
       }
-    }, (res) => {
-      if (chrome.runtime.lastError) {
-        showToast('Please open an active webpage to autofill', 'error');
-      } else {
-        showToast('Filled credentials into form!');
-        setTimeout(() => window.close(), 400);
+
+      let userInput = textInputs.find(i => isUserField(i));
+      if (!userInput && passwordInputs.length > 0) {
+        const firstPass = passwordInputs[0];
+        const inputsBefore = textInputs.filter(i => (i.compareDocumentPosition(firstPass) & Node.DOCUMENT_POSITION_FOLLOWING));
+        if (inputsBefore.length > 0) {
+          userInput = inputsBefore[inputsBefore.length - 1];
+        } else if (textInputs.length > 0) {
+          userInput = textInputs[0];
+        }
       }
-    });
+
+      function injectVal(el, val) {
+        if (!el || !val) return;
+        el.focus();
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(el, val);
+        } else {
+          el.value = val;
+        }
+        ['input', 'change', 'keydown', 'keyup'].forEach(ev => {
+          el.dispatchEvent(new Event(ev, { bubbles: true, cancelable: true }));
+        });
+        el.blur();
+
+        const origBg = el.style.backgroundColor;
+        el.style.backgroundColor = '#E8F0FE';
+        el.style.borderColor = '#1A73E8';
+        setTimeout(() => { el.style.backgroundColor = origBg; }, 1200);
+      }
+
+      let count = 0;
+      if (userInput && targetUser) {
+        injectVal(userInput, targetUser);
+        count++;
+      }
+      if (passwordInputs.length > 0 && password) {
+        passwordInputs.forEach(p => {
+          injectVal(p, password);
+          count++;
+        });
+      }
+      return count;
+    }
+
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: targetTab.id },
+        func: inPageFill,
+        args: [fillData]
+      });
+
+      showToast('Filled credentials into page!');
+      setTimeout(() => window.close(), 350);
+    } catch (scriptErr) {
+      // Fallback to tabs.sendMessage
+      chrome.tabs.sendMessage(targetTab.id, { action: 'autofill', data: fillData }, (res) => {
+        if (!chrome.runtime.lastError && res && res.success) {
+          showToast('Filled credentials into form!');
+          setTimeout(() => window.close(), 350);
+        } else {
+          showToast('Cannot autofill on this page', 'error');
+        }
+      });
+    }
   }
 
   // Live Search
@@ -335,11 +400,10 @@ document.addEventListener('DOMContentLoaded', () => {
     renderAllItemsList(filtered);
   });
 
-  // Unlock Submit via Email + Master Password
+  // Unlock Submit via Master Password ONLY (Google Autofill Style)
   formUnlock.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const targetEmail = inputEmail ? inputEmail.value.trim().toLowerCase() : '';
     const masterPassword = inputMasterPassword.value.trim();
 
     if (!masterPassword) {
@@ -352,15 +416,18 @@ document.addEventListener('DOMContentLoaded', () => {
     await chrome.storage.local.set({ server_url: serverUrl });
 
     btnUnlockSubmit.disabled = true;
-    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Searching Vault...';
+    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlocking Vault...';
+
+    // Auto-resolve email from browser profile or stored session
+    const detectedEmail = await getDetectedEmail();
 
     try {
       const payload = {
         password: masterPassword,
         hostname: currentTargetHostname
       };
-      if (targetEmail) {
-        payload.email = targetEmail;
+      if (detectedEmail) {
+        payload.email = detectedEmail;
       }
 
       const res = await fetch(`${serverUrl}/auth/master-unlock`, {
@@ -375,12 +442,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const errorMsg = data.error || data.message || 'Incorrect Master Password. Please try again.';
         showToast(errorMsg, 'error');
         btnUnlockSubmit.disabled = false;
-        btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
+        btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
         inputMasterPassword.focus();
         return;
       }
 
-      // Successful unlock for the specific email vault!
+      // Successful unlock for the account!
       const userData = {
         id: data.id || data._id,
         name: data.name || data.email?.split('@')[0] || 'Omnikey User',
@@ -400,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       btnUnlockSubmit.disabled = false;
-      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
+      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
 
       showToast(`Vault unlocked for ${userData.email}!`);
       showUnlockedView(userData, items);
@@ -419,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Master unlock network error:', netErr);
       showToast('Cannot connect to Omnikey server. Check API URL.', 'error');
       btnUnlockSubmit.disabled = false;
-      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
+      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
     }
   });
 

@@ -234,7 +234,7 @@
         </div>
       `;
     } else {
-      // Locked view: Prompt for Master Password to search this email's vault for this website!
+      // Locked view: Prompt ONLY for Master Password (Google Autofill style)
       card.innerHTML = `
         <div class="omnikey-card-header">
           <div class="omnikey-brand-line">
@@ -249,13 +249,14 @@
         </div>
 
         <div class="omnikey-card-title">Autofill passwords for ${escapeHtml(domain)}?</div>
-        <div class="omnikey-card-subtitle">Enter your Master Password to search your vault and show all saved passwords for this site.</div>
+        <div class="omnikey-card-subtitle">Enter your Master Password to unlock and autofill your saved credentials.</div>
 
         <div class="omnikey-unlock-section">
-          <label style="font-size: 11px; font-weight: 600; color: #5F6368; display: block; margin-bottom: 4px;">ACCOUNT EMAIL</label>
-          <input type="email" class="omnikey-unlock-input" id="omnikey-user-email" value="${escapeHtml(detectedEmail || '')}" placeholder="Enter your Omnikey email" style="margin-bottom: 8px;">
-          
-          <label style="font-size: 11px; font-weight: 600; color: #5F6368; display: block; margin-bottom: 4px;">MASTER PASSWORD</label>
+          ${detectedEmail ? `
+            <div style="font-size: 11px; color: #5F6368; margin-bottom: 6px;">
+              Account: <strong style="color: #1A73E8;">${escapeHtml(detectedEmail)}</strong>
+            </div>
+          ` : ''}
           <input type="password" class="omnikey-unlock-input" id="omnikey-master-pass" placeholder="Enter Master Password" autofocus>
           <div id="omnikey-error-msg" style="color: #D93025; font-size: 11px; margin-top: 4px; display: none;"></div>
         </div>
@@ -263,7 +264,7 @@
         <div class="omnikey-actions-row">
           <button class="omnikey-btn omnikey-btn-secondary" id="omnikey-dismiss-btn-2">Never</button>
           <button class="omnikey-btn omnikey-btn-primary" id="omnikey-action-unlock">
-            <span>Unlock & Show Passwords</span>
+            <span>Unlock & Autofill</span>
           </button>
         </div>
       `;
@@ -338,12 +339,10 @@
     } else {
       // Event Handlers for Locked View
       const btnUnlock = card.querySelector('#omnikey-action-unlock');
-      const emailInput = card.querySelector('#omnikey-user-email');
       const passInput = card.querySelector('#omnikey-master-pass');
       const errorMsg = card.querySelector('#omnikey-error-msg');
 
       const doUnlock = () => {
-        const email = emailInput ? emailInput.value.trim() : '';
         const masterPassword = passInput ? passInput.value.trim() : '';
 
         if (!masterPassword) {
@@ -351,25 +350,36 @@
           return;
         }
 
-        btnUnlock.innerHTML = '<span>Searching Vault...</span>';
+        btnUnlock.innerHTML = '<span>Unlocking...</span>';
         btnUnlock.disabled = true;
         if (errorMsg) errorMsg.style.display = 'none';
 
         chrome.runtime.sendMessage({
           action: 'unlockVault',
-          email: email,
+          email: detectedEmail || '',
           masterPassword: masterPassword,
           hostname: window.location.hostname
         }, (res) => {
           if (res && res.success) {
             pageCredentialsState.isUnlocked = true;
             pageCredentialsState.matches = res.matches;
-            pageCredentialsState.detectedEmail = res.user?.email || email;
-            showPageToast(`Vault unlocked for ${res.user?.email || email}! Showing passwords.`);
-            // Re-render card with ALL passwords found for this specific website!
-            showAutofillCard(res.matches, true, res.user?.email || email);
+            pageCredentialsState.detectedEmail = res.user?.email || detectedEmail;
+            
+            // Auto fill best match immediately!
+            if (res.matches && res.matches.length > 0) {
+              performAutofill(res.matches[0]);
+              showPageToast(`Omnikey Unlocked & Form Filled! (${res.matches[0].username || res.matches[0].email})`);
+              if (res.matches.length > 1) {
+                showAutofillCard(res.matches, true, res.user?.email || detectedEmail);
+              } else {
+                closeCard();
+              }
+            } else {
+              showPageToast(`Vault unlocked! No saved password for this site.`);
+              closeCard();
+            }
           } else {
-            btnUnlock.innerHTML = '<span>Unlock & Show Passwords</span>';
+            btnUnlock.innerHTML = '<span>Unlock & Autofill</span>';
             btnUnlock.disabled = false;
             if (errorMsg) {
               errorMsg.textContent = res?.error || 'Incorrect Master Password. Please try again.';
@@ -414,7 +424,12 @@
     let usernameInput = allTextInputs.find(i => isUsernameOrEmailInput(i));
     if (!usernameInput && passwordInputs.length > 0) {
       const firstPass = passwordInputs[0];
-      usernameInput = allTextInputs.find(i => (i.compareDocumentPosition(firstPass) & Node.DOCUMENT_POSITION_FOLLOWING));
+      const inputsBefore = allTextInputs.filter(i => (i.compareDocumentPosition(firstPass) & Node.DOCUMENT_POSITION_FOLLOWING));
+      if (inputsBefore.length > 0) {
+        usernameInput = inputsBefore[inputsBefore.length - 1];
+      } else if (allTextInputs.length > 0) {
+        usernameInput = allTextInputs[0];
+      }
     }
 
     const targetUser = username || email;
