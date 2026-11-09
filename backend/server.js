@@ -70,6 +70,9 @@ const syncMockDbToAtlas = async () => {
   }
 };
 
+// Express Trust Proxy (Required for reverse proxies like Render to detect HTTPS & client IPs)
+app.set('trust proxy', 1);
+
 // Security Middlewares
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }

@@ -26,8 +26,7 @@ import HelpModal from './HelpModal';
 import ExtensionModal from './ExtensionModal';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+import API_URL from '../config/api';
 
 const AppLayout = () => {
   const location = useLocation();

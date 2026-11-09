@@ -21,8 +21,7 @@ import {
   FiBell
 } from 'react-icons/fi';
 import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+import API_URL from '../config/api';
 
 const Vault = () => {
   const [items, setItems] = useState([]);

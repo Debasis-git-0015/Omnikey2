@@ -11,14 +11,13 @@ import {
   FiCheck
 } from 'react-icons/fi';
 import axios from 'axios';
+import API_URL from '../config/api';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [successData, setSuccessData] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
   const isValidEmail = (emailStr) => {
     if (!emailStr) return false;

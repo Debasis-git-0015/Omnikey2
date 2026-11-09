@@ -12,6 +12,7 @@ import {
   FiKey
 } from 'react-icons/fi';
 import axios from 'axios';
+import API_URL from '../config/api';
 
 const ResetPassword = () => {
   const { token } = useParams();
@@ -24,8 +25,6 @@ const ResetPassword = () => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
   // Calculate password strength
   const getPasswordStrength = (pass) => {

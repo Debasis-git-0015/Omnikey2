@@ -12,6 +12,7 @@ import {
   FiPlayCircle,
   FiToggleRight
 } from 'react-icons/fi';
+import API_URL from '../config/api';
 
 const ExtensionModal = ({ isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
@@ -30,7 +31,7 @@ const ExtensionModal = ({ isOpen, onClose }) => {
   const handleDownloadZip = async () => {
     setDownloadStarted(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+      const apiUrl = API_URL;
       let blob = null;
 
       // 1. Try backend download endpoint first
@@ -70,7 +71,7 @@ const ExtensionModal = ({ isOpen, onClose }) => {
       }
     } catch (err) {
       console.error('Download error:', err);
-      window.open('http://localhost:8080/api/extension/download', '_blank');
+      window.open(`${API_URL}/extension/download`, '_blank');
     } finally {
       setTimeout(() => setDownloadStarted(false), 3000);
     }
@@ -159,7 +160,7 @@ const ExtensionModal = ({ isOpen, onClose }) => {
                   )}
                 </button>
                 <a
-                  href="http://localhost:8080/api/extension/download"
+                  href={`${API_URL}/extension/download`}
                   download="omnikey-autofill-extension.zip"
                   className="text-[10px] font-semibold text-[#6B7890] hover:text-[#4F7CFF] transition underline"
                   target="_blank"
@@ -227,7 +228,7 @@ const ExtensionModal = ({ isOpen, onClose }) => {
           {/* Action Footer */}
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#E6EBF2]">
             <a
-              href="http://localhost:8080/test-page"
+              href="/test-page"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#4F7CFF] hover:underline"
