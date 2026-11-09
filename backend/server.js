@@ -29,8 +29,12 @@ const resolveWorkspaceFile = (relPath) => {
   return candidates[0];
 };
 
-// Load environment variables
+// Load environment variables (supports running from repo root or backend folder)
 dotenv.config();
+const localEnvPath = path.resolve(__dirname, '.env');
+if (fs.existsSync(localEnvPath)) {
+  dotenv.config({ path: localEnvPath });
+}
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -149,6 +153,18 @@ app.get('/test-page', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vault', vaultRoutes);
+
+// Serve static frontend build if present (enables turnkey full-stack hosting on Render)
+const frontendDist = resolveWorkspaceFile('frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/test-page')) {
+      return next();
+    }
+    res.sendFile(path.resolve(frontendDist, 'index.html'));
+  });
+}
 
 // Conditionally listen if not executing in serverless Vercel function or testing suite
 if (process.env.NODE_ENV !== 'test' && (process.env.NODE_ENV !== 'production' || !process.env.VERCEL)) {

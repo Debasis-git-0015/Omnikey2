@@ -1,11 +1,10 @@
 services:
   - type: web
-    name: omnikey-backend
+    name: omnikey
     runtime: node
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: node server.js
     plan: free
+    buildCommand: npm run build
+    startCommand: npm start
     autoDeploy: true
     envVars:
       - key: NODE_ENV
