@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment Variables & Secrets (CRITICAL: Do NOT commit credentials)
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+*.env
+
+# Large archives & zip backups
+*.zip
+backend.zip
+
+# Local mock database & test dumps
+mock_db.json
+backend/mock_db.json
+
+# Build outputs
+dist/
+build/
+frontend/dist/
+backend/dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

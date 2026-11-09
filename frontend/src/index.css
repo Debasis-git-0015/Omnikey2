@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+@theme {
+  --color-main-bg: #F4F7FB;
+  --color-mainBg: #F4F7FB;
+  --color-card-white: #FFFFFF;
+  --color-cardWhite: #FFFFFF;
+  --color-primary-blue: #4F7CFF;
+  --color-primaryBlue: #4F7CFF;
+  --color-primary-hover: #3D68E8;
+  --color-primaryHover: #3D68E8;
+  --color-soft-primary: #EEF4FF;
+  --color-softPrimary: #EEF4FF;
+  --color-main-text: #172033;
+  --color-mainText: #172033;
+  --color-secondary-text: #6B7890;
+  --color-secondaryText: #6B7890;
+  --color-border-color: #E6EBF2;
+  --color-borderColor: #E6EBF2;
+  
+  --color-success-green: #42A982;
+  --color-successGreen: #42A982;
+  --color-success-bg: #EAF7F1;
+  --color-successBg: #EAF7F1;
+  --color-warning-amber: #D99A45;
+  --color-warningAmber: #D99A45;
+  --color-warning-bg: #FFF6E8;
+  --color-warningBg: #FFF6E8;
+  --color-danger-red: #D96B6B;
+  --color-dangerRed: #D96B6B;
+  --color-danger-bg: #FFF0F0;
+  --color-dangerBg: #FFF0F0;
+
+  --radius-premium: 16px;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #F4F7FB;
+  color: #172033;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+@layer utilities {
+  /* Base Cards */
+  .glass-card-dark-neon,
+  .glass-card {
+    background: #FFFFFF;
+    border: 1px solid #E6EBF2;
+    box-shadow: 0 1px 3px 0 rgba(23, 32, 51, 0.04);
+    border-radius: 16px;
+  }
+
+  .glass-card-dark-neon-hover {
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .glass-card-dark-neon-hover:hover {
+    background: #FFFFFF;
+    border-color: #CBD5E1;
+    box-shadow: 0 10px 25px -5px rgba(23, 32, 51, 0.06);
+    transform: translateY(-1px);
+  }
+
+  /* Inputs */
+  .glass-input-dark-neon,
+  .glass-input {
+    background: #FFFFFF;
+    border: 1px solid #E6EBF2;
+    color: #172033;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .glass-input-dark-neon::placeholder,
+  .glass-input::placeholder {
+    color: #6B7890;
+  }
+
+  .glass-input-dark-neon:focus,
+  .glass-input:focus {
+    background: #FFFFFF;
+    border-color: #4F7CFF;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.15);
+  }
+
+  .spaced-header {
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .dark-neon-bg,
+  .animated-bg {
+    background-color: #F4F7FB;
+  }
+
+  .text-gradient {
+    color: #172033;
+  }
+
+  .avatar-overlap {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .avatar-overlap img, 
+  .avatar-overlap .avatar-placeholder {
+    margin-left: -8px;
+    border: 2px solid #FFFFFF;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F4F7FB;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E6EBF2;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6B7890;
+}
+
