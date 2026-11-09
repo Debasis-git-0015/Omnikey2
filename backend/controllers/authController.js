@@ -6,6 +6,7 @@ import path from 'path';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import CryptoJS from 'crypto-js';
 import { connectDB } from '../config/db.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
 
@@ -107,6 +108,159 @@ export const login = async (req, res, next) => {
       errorMessage = 'Database connection timed out. Please allow IP 0.0.0.0/0 in MongoDB Atlas Network Access.';
     }
     return res.status(500).json({ error: errorMessage });
+  }
+};
+
+// Decryption helper for master unlock vault retrieval
+const decryptSecret = () => process.env.AES_SECRET || 'super_secret_securevault_aes_key_2026';
+
+const decryptPassword = (ciphertext) => {
+  if (!ciphertext) return ciphertext;
+  try {
+    const bytes = CryptoJS.AES.decrypt(ciphertext, decryptSecret());
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    return decrypted || ciphertext;
+  } catch (err) {
+    return ciphertext;
+  }
+};
+
+// @desc    Authenticate and unlock vault directly by Master Password (no email required)
+// @route   POST /api/auth/master-unlock
+// @access  Public
+export const masterUnlock = async (req, res, next) => {
+  const { password, masterPassword } = req.body;
+  const candidatePassword = (password || masterPassword || '').trim();
+
+  if (!candidatePassword) {
+    return res.status(400).json({ error: 'Master Password is required' });
+  }
+
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (connErr) {
+        console.warn('[masterUnlock] DB connection notice:', connErr.message);
+      }
+    }
+
+    let matchedUser = null;
+
+    // 1. Scan registered users in MongoDB Atlas (if connected)
+    if (mongoose.connection.readyState === 1) {
+      const users = await User.find({ passwordHash: { $ne: null } });
+      for (const user of users) {
+        if (user.passwordHash) {
+          const isMatch = await user.comparePassword(candidatePassword);
+          if (isMatch) {
+            matchedUser = user;
+            break;
+          }
+        }
+      }
+    }
+
+    // 2. Check offline mock_db.json fallback if no match found in MongoDB
+    if (!matchedUser) {
+      try {
+        const mockDbPath = path.resolve(process.cwd(), 'backend', 'mock_db.json');
+        if (fs.existsSync(mockDbPath)) {
+          const mockData = JSON.parse(fs.readFileSync(mockDbPath, 'utf8'));
+          if (mockData.users && Array.isArray(mockData.users)) {
+            for (const mu of mockData.users) {
+              const hash = mu.passwordHash || mu.password;
+              if (hash) {
+                let match = false;
+                if (hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
+                  match = await bcrypt.compare(candidatePassword, hash);
+                } else {
+                  match = (candidatePassword === hash);
+                }
+                if (match) {
+                  matchedUser = {
+                    _id: mu.id || mu._id || 'mock-user-1',
+                    name: mu.name || 'Omnikey User',
+                    email: mu.email
+                  };
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (mockErr) {
+        console.warn('[masterUnlock] Mock DB lookup fallback error:', mockErr.message);
+      }
+    }
+
+    if (!matchedUser) {
+      return res.status(401).json({ error: 'Incorrect Master Password. Please check your password.' });
+    }
+
+    // 3. User successfully resolved! Issue JWT token
+    const token = generateToken(matchedUser._id);
+
+    // 4. Retrieve and decrypt vault items for this matched user
+    let vaultItems = [];
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const items = await VaultItem.find({ user: matchedUser._id }).sort({ createdAt: -1 });
+        vaultItems = items.map(item => {
+          const plain = item.toObject();
+          return {
+            id: plain._id,
+            _id: plain._id,
+            website: plain.website,
+            url: plain.url,
+            username: plain.username,
+            email: plain.email,
+            password: decryptPassword(plain.password),
+            category: plain.category,
+            notes: decryptPassword(plain.notes)
+          };
+        });
+      } catch (vErr) {
+        console.warn('[masterUnlock] Mongo vault fetch warning:', vErr.message);
+      }
+    }
+
+    // If no vault items found in Mongo, check mock_db for items belonging to this user
+    if (vaultItems.length === 0) {
+      try {
+        const mockDbPath = path.resolve(process.cwd(), 'backend', 'mock_db.json');
+        if (fs.existsSync(mockDbPath)) {
+          const mockData = JSON.parse(fs.readFileSync(mockDbPath, 'utf8'));
+          const userIdStr = String(matchedUser._id);
+          const mockItems = (mockData.vault || []).filter(v => String(v.userId || v.user) === userIdStr);
+          vaultItems = mockItems.map(item => ({
+            id: item.id || item._id,
+            _id: item.id || item._id,
+            website: item.website,
+            url: item.url,
+            username: item.username,
+            email: item.email,
+            password: decryptPassword(item.password),
+            category: item.category,
+            notes: decryptPassword(item.notes)
+          }));
+        }
+      } catch (mockVaultErr) {}
+    }
+
+    console.log(`[masterUnlock] Successfully authenticated user: ${matchedUser.email} (Vault items: ${vaultItems.length})`);
+
+    return res.status(200).json({
+      success: true,
+      id: matchedUser._id,
+      name: matchedUser.name,
+      email: matchedUser.email,
+      token,
+      vault_items: vaultItems
+    });
+  } catch (error) {
+    console.error('Master unlock controller error:', error);
+    return res.status(500).json({ error: 'Server error during master password verification.' });
   }
 };
 

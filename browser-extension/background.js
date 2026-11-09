@@ -113,50 +113,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
     }
 
-    // 4. Unlock vault with Master Password directly from the in-page prompt
+    // 4. Unlock vault with Master Password directly (Sole Key - Multi-User Decoupled)
     if (request.action === 'unlockVault') {
-      const { email, masterPassword, hostname } = request;
+      const { masterPassword, password, hostname } = request;
+      const pwd = (masterPassword || password || '').trim();
       const targetHost = extractDomain(hostname || (sender.tab ? sender.tab.url : ''));
 
-      const targetEmail = (email || storage.remembered_email || (storage.user ? storage.user.email : '')).trim().toLowerCase();
-
-      if (!targetEmail) {
-        return { success: false, error: 'Please enter your account email to unlock.' };
-      }
-
-      if (!masterPassword) {
-        return { success: false, error: 'Please enter your master password.' };
+      if (!pwd) {
+        return { success: false, error: 'Please enter your Master Password.' };
       }
 
       try {
-        const res = await fetch(`${serverUrl}/auth/login`, {
+        const res = await fetch(`${serverUrl}/auth/master-unlock`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: targetEmail, password: masterPassword })
+          body: JSON.stringify({ password: pwd })
         });
 
         const data = await res.json();
 
         if (!res.ok || !data.token) {
-          return { success: false, error: data.error || 'Invalid master password.' };
+          return { success: false, error: data.error || 'Incorrect Master Password.' };
         }
 
         const userData = {
           id: data.id || data._id,
-          name: data.name || targetEmail.split('@')[0],
-          email: targetEmail,
+          name: data.name || data.email?.split('@')[0] || 'Omnikey User',
+          email: data.email,
           token: data.token
         };
+
+        const vaultItems = data.vault_items || [];
 
         await chrome.storage.local.set({
           token: data.token,
           user: userData,
-          remembered_email: targetEmail,
+          vault_items: vaultItems,
           server_url: serverUrl
         });
 
-        const updatedVault = await fetchVaultItems(data.token, serverUrl);
-        const matches = updatedVault.filter(item => 
+        const matches = vaultItems.filter(item => 
           matchesDomain(targetHost, item.url, item.website)
         );
 

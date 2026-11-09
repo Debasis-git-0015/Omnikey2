@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Omnikey Password Manager & Smart Autofill",
-  "version": "2.1.0",
-  "description": "Clean, Google-style password manager extension for 1-click autofill and automatic credential saving across websites.",
+  "version": "2.2.0",
+  "description": "Clean, Google-style password manager extension with Master Password unlock, 1-click in-page autofill, and automatic credential saving across websites.",
   "permissions": [
     "activeTab",
     "scripting",

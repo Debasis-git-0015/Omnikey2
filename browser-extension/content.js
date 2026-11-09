@@ -74,6 +74,10 @@
       const result = performAutofill(request.data);
       sendResponse({ success: result.filledCount > 0, filledCount: result.filledCount });
     }
+    if (request.action === 'vaultUnlocked') {
+      initPageDetection();
+      sendResponse({ received: true });
+    }
     return true;
   });
 
@@ -90,9 +94,9 @@
 
       // If this website has a matching vault entry, pop up the autofill prompt
       if (response.hasMatch && response.matches && response.matches.length > 0) {
-        showAutofillCard(response.matches[0], response.isUnlocked, response.rememberedEmail);
-        attachInputReopenListeners();
+        showAutofillCard(response.matches[0], response.isUnlocked);
       }
+      attachInputReopenListeners();
     });
 
     // Attach listener for capturing new accounts created on this website
@@ -124,7 +128,7 @@
       if (input.type === 'password' || isUsernameOrEmailInput(input)) {
         input.addEventListener('focus', () => {
           if (!activeCard && pageCredentialsState && pageCredentialsState.hasMatch) {
-            showAutofillCard(pageCredentialsState.matches[0], pageCredentialsState.isUnlocked, pageCredentialsState.rememberedEmail);
+            showAutofillCard(pageCredentialsState.matches[0], pageCredentialsState.isUnlocked);
           }
         });
       }
@@ -132,7 +136,7 @@
   }
 
   // 3. Google-Style Autofill Prompt Card
-  function showAutofillCard(credential, isUnlocked, rememberedEmail) {
+  function showAutofillCard(credential, isUnlocked) {
     removeActiveCard();
 
     const domain = window.location.hostname.replace(/^www\./, '');
@@ -170,11 +174,6 @@
 
       ${!isUnlocked ? `
         <div class="omnikey-unlock-section">
-          ${!rememberedEmail ? `
-            <input type="email" class="omnikey-unlock-input" id="omnikey-user-email" placeholder="Enter your Omnikey email" style="margin-bottom: 6px;">
-          ` : `
-            <div style="font-size: 11px; color: #5F6368; margin-bottom: 4px;">Account: <strong>${escapeHtml(rememberedEmail)}</strong></div>
-          `}
           <input type="password" class="omnikey-unlock-input" id="omnikey-master-pass" placeholder="Enter Master Password to unlock" autofocus>
         </div>
       ` : ''}
@@ -195,7 +194,6 @@
     const btnNever = card.querySelector('#omnikey-action-never');
     const btnAutofill = card.querySelector('#omnikey-action-autofill');
     const masterPassInput = card.querySelector('#omnikey-master-pass');
-    const emailInput = card.querySelector('#omnikey-user-email');
 
     const closeCard = () => {
       card.classList.remove('show');
@@ -210,7 +208,6 @@
 
     const handleFillAction = () => {
       if (!isUnlocked) {
-        const email = emailInput ? emailInput.value.trim() : (rememberedEmail || '');
         const masterPassword = masterPassInput ? masterPassInput.value.trim() : '';
 
         if (!masterPassword) {
@@ -218,12 +215,11 @@
           return;
         }
 
-        btnAutofill.innerHTML = '<span>Verifying...</span>';
+        btnAutofill.innerHTML = '<span>Unlocking...</span>';
         btnAutofill.disabled = true;
 
         chrome.runtime.sendMessage({
           action: 'unlockVault',
-          email,
           masterPassword,
           hostname: window.location.hostname
         }, (res) => {
@@ -231,9 +227,28 @@
             pageCredentialsState.isUnlocked = true;
             pageCredentialsState.matches = res.matches;
             const fullCred = (res.matches && res.matches[0]) || credential;
-            performAutofill(fullCred);
-            showPageToast('Omnikey Unlocked & Form Filled!');
+            if (fullCred) {
+              performAutofill(fullCred);
+              showPageToast('Omnikey Unlocked & Form Filled!');
+            } else {
+              showPageToast('Omnikey Unlocked!');
+            }
             closeCard();
+          } else {
+            btnAutofill.innerHTML = '<span>Unlock & Fill</span>';
+            btnAutofill.disabled = false;
+            if (masterPassInput) {
+              masterPassInput.value = '';
+              masterPassInput.placeholder = res?.error || 'Incorrect Master Password';
+              masterPassInput.style.borderColor = '#D93025';
+            }
+          }
+        });
+      } else {
+        performAutofill(credential);
+        closeCard();
+      }
+    };
           } else {
             btnAutofill.innerHTML = '<span>Unlock & Fill</span>';
             btnAutofill.disabled = false;

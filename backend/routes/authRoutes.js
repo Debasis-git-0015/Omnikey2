@@ -2,6 +2,7 @@ import express from 'express';
 import { 
   register, 
   login, 
+  masterUnlock,
   forgotPassword, 
   resetPassword,
   updateProfile, 
@@ -22,6 +23,7 @@ const router = express.Router();
 // Local credentials routes
 router.post('/register', validateBody(registerSchema), register);
 router.post('/login', validateBody(loginSchema), login);
+router.post('/master-unlock', masterUnlock);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password/:token', resetPassword);
 
