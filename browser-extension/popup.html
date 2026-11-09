@@ -24,17 +24,24 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="btn-refresh" class="g-icon-btn" title="Sync Vault with Cloud" aria-label="Sync">
+        <button id="btn-refresh" class="g-icon-btn hidden" title="Sync Vault" aria-label="Sync">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
         </button>
-        <button id="btn-lock" class="g-icon-btn" title="Lock Vault" aria-label="Lock">
+        <button id="btn-lock" class="g-icon-btn hidden" title="Lock Vault" aria-label="Lock">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+        <button id="btn-logout" class="g-icon-btn hidden" title="Sign Out / Switch Account" aria-label="Sign Out">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
           </svg>
         </button>
       </div>
@@ -48,7 +55,7 @@
           <line x1="2" y1="12" x2="22" y2="12"></line>
           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
         </svg>
-        <span id="detected-hostname">Detecting current site...</span>
+        <span id="detected-hostname">Detecting site...</span>
       </div>
       <span id="domain-badge" class="g-badge">Autofill Ready</span>
     </div>
@@ -56,24 +63,44 @@
     <!-- Notification Toast -->
     <div id="toast" class="g-toast hidden"></div>
 
-    <!-- VIEW 1: LOCKED VAULT -->
+    <!-- VIEW 1: SIGN IN / UNLOCK (FOR ANY USER) -->
     <main id="state-locked" class="view">
       <div class="locked-card">
         <div class="avatar-ring">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1A73E8" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            <circle cx="12" cy="16" r="1.5" fill="#1A73E8"></circle>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1A73E8" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
           </svg>
         </div>
-        <h2 class="view-title">Unlock Omnikey</h2>
-        <p class="view-subtitle">Enter your master password to unlock your vault and autofill passwords.</p>
+        <h2 id="locked-title" class="view-title">Sign In to Vault</h2>
+        <p id="locked-subtitle" class="view-subtitle">Enter your account credentials to access your passwords and enable autofill.</p>
 
         <form id="form-unlock" class="g-form">
-          <div class="g-field">
+          <!-- Remembered User Card (Shown when an account was previously used) -->
+          <div id="badge-remembered-account" class="remembered-account-card hidden">
+            <div class="account-info">
+              <div class="account-avatar" id="account-avatar-initial">U</div>
+              <div class="account-details">
+                <span class="account-email" id="remembered-email-display"></span>
+                <span class="account-status">Omnikey Vault</span>
+              </div>
+            </div>
+            <button type="button" id="btn-switch-account" class="btn-text-action" title="Log in with a different email">Switch</button>
+          </div>
+
+          <!-- Email Field Group (Shown for new users or when switching accounts) -->
+          <div class="g-field" id="group-email">
+            <label for="input-email">Email Address</label>
+            <div class="input-box">
+              <input type="email" id="input-email" placeholder="Enter your email" required autocomplete="username">
+            </div>
+          </div>
+
+          <!-- Master Password Field Group -->
+          <div class="g-field" id="group-password">
             <label for="input-master-password">Master Password</label>
             <div class="input-box">
-              <input type="password" id="input-master-password" placeholder="Enter master password" required autofocus autocomplete="current-password">
+              <input type="password" id="input-master-password" placeholder="Enter master password" required autocomplete="current-password">
               <button type="button" id="btn-toggle-password" class="field-btn" title="Toggle password visibility">
                 <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -83,7 +110,7 @@
             </div>
           </div>
 
-          <!-- API Endpoint Accordion -->
+          <!-- Cloud Server Settings Accordion -->
           <div class="api-settings-group">
             <button type="button" id="btn-toggle-settings" class="settings-link">
               <span>Cloud Server Settings</span>
@@ -94,19 +121,24 @@
             <div id="settings-content" class="settings-content hidden">
               <label for="input-api-url">API Endpoint</label>
               <input type="url" id="input-api-url" value="https://omnikey4.onrender.com/api">
-              <span class="settings-hint">Use <code>https://omnikey4.onrender.com/api</code> for cloud or <code>http://localhost:8080/api</code> for local testing.</span>
+              <span class="settings-hint">Default: <code>https://omnikey4.onrender.com/api</code></span>
             </div>
           </div>
 
           <button type="submit" id="btn-unlock-submit" class="g-btn g-btn-primary">
-            <span class="btn-text">Unlock Vault</span>
+            <span class="btn-text">Sign In & Unlock</span>
             <span class="btn-spinner hidden"></span>
           </button>
+
+          <div class="form-bottom-hint">
+            <span>New to Omnikey? </span>
+            <a href="https://omnikey4.onrender.com/register" target="_blank" class="link-bold">Create account</a>
+          </div>
         </form>
       </div>
     </main>
 
-    <!-- VIEW 2: UNLOCKED VAULT -->
+    <!-- VIEW 2: UNLOCKED VAULT (FOR SIGNED IN USER) -->
     <main id="state-unlocked" class="view hidden">
       <!-- Section: Matching Passwords for Current Site -->
       <section class="vault-block">
@@ -124,7 +156,6 @@
         <div class="block-header">
           <h3 class="block-title">All Saved Passwords</h3>
         </div>
-        <!-- Google-style Search Box -->
         <div class="g-search-bar">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2">
             <circle cx="11" cy="11" r="8"></circle>
@@ -145,7 +176,7 @@
         <span id="user-status-display">Connected to Vault</span>
       </div>
       <a href="https://omnikey4.onrender.com/dashboard" target="_blank" class="footer-link">
-        Open Vault ↗
+        Web Vault ↗
       </a>
     </footer>
   </div>

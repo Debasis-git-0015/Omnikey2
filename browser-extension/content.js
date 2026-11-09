@@ -1,10 +1,10 @@
-// Google-style In-Page Engine for Omnikey Password Manager (Autofill & Save)
+// Google-style In-Page Engine for Omnikey Password Manager (Multi-User & Auto-Sync)
 
 (function() {
   if (window.__omnikeyContentScriptLoaded) return;
   window.__omnikeyContentScriptLoaded = true;
 
-  // 1. Strict check: NEVER show on Omnikey's own website/dashboard/login
+  // 1. Strict check: NEVER show autofill prompts on Omnikey's own website/dashboard/login
   function isOmnikeyAppPage() {
     const host = window.location.hostname.toLowerCase();
     const port = window.location.port;
@@ -35,8 +35,30 @@
     return false;
   }
 
-  // If on Omnikey's own website, stop completely
+  // 2. Seamless Session Sync: If user logs into Omnikey web app, auto-connect the extension to that user!
   if (isOmnikeyAppPage()) {
+    function syncOmnikeyWebSession() {
+      try {
+        const token = localStorage.getItem('token');
+        const userRaw = localStorage.getItem('user');
+        if (token && userRaw) {
+          const user = JSON.parse(userRaw);
+          if (user && user.email) {
+            chrome.runtime.sendMessage({
+              action: 'syncWebSession',
+              token,
+              user
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Sync on page load and on storage update
+    syncOmnikeyWebSession();
+    window.addEventListener('storage', syncOmnikeyWebSession);
+
+    // Suppress in-page autofill and save prompts on Omnikey itself
     console.log('[Omnikey Extension] Omnikey domain detected. In-page autofill prompts suppressed on own app.');
     return;
   }
@@ -68,7 +90,7 @@
 
       // If this website has a matching vault entry, pop up the autofill prompt
       if (response.hasMatch && response.matches && response.matches.length > 0) {
-        showAutofillCard(response.matches[0], response.isUnlocked);
+        showAutofillCard(response.matches[0], response.isUnlocked, response.rememberedEmail);
         attachInputReopenListeners();
       }
     });
@@ -102,15 +124,15 @@
       if (input.type === 'password' || isUsernameOrEmailInput(input)) {
         input.addEventListener('focus', () => {
           if (!activeCard && pageCredentialsState && pageCredentialsState.hasMatch) {
-            showAutofillCard(pageCredentialsState.matches[0], pageCredentialsState.isUnlocked);
+            showAutofillCard(pageCredentialsState.matches[0], pageCredentialsState.isUnlocked, pageCredentialsState.rememberedEmail);
           }
         });
       }
     });
   }
 
-  // 2. Google-Style Autofill Prompt Card
-  function showAutofillCard(credential, isUnlocked) {
+  // 3. Google-Style Autofill Prompt Card
+  function showAutofillCard(credential, isUnlocked, rememberedEmail) {
     removeActiveCard();
 
     const domain = window.location.hostname.replace(/^www\./, '');
@@ -148,6 +170,11 @@
 
       ${!isUnlocked ? `
         <div class="omnikey-unlock-section">
+          ${!rememberedEmail ? `
+            <input type="email" class="omnikey-unlock-input" id="omnikey-user-email" placeholder="Enter your Omnikey email" style="margin-bottom: 6px;">
+          ` : `
+            <div style="font-size: 11px; color: #5F6368; margin-bottom: 4px;">Account: <strong>${escapeHtml(rememberedEmail)}</strong></div>
+          `}
           <input type="password" class="omnikey-unlock-input" id="omnikey-master-pass" placeholder="Enter Master Password to unlock" autofocus>
         </div>
       ` : ''}
@@ -168,6 +195,7 @@
     const btnNever = card.querySelector('#omnikey-action-never');
     const btnAutofill = card.querySelector('#omnikey-action-autofill');
     const masterPassInput = card.querySelector('#omnikey-master-pass');
+    const emailInput = card.querySelector('#omnikey-user-email');
 
     const closeCard = () => {
       card.classList.remove('show');
@@ -182,7 +210,9 @@
 
     const handleFillAction = () => {
       if (!isUnlocked) {
+        const email = emailInput ? emailInput.value.trim() : (rememberedEmail || '');
         const masterPassword = masterPassInput ? masterPassInput.value.trim() : '';
+
         if (!masterPassword) {
           if (masterPassInput) masterPassInput.focus();
           return;
@@ -193,6 +223,7 @@
 
         chrome.runtime.sendMessage({
           action: 'unlockVault',
+          email,
           masterPassword,
           hostname: window.location.hostname
         }, (res) => {
@@ -208,7 +239,7 @@
             btnAutofill.disabled = false;
             if (masterPassInput) {
               masterPassInput.value = '';
-              masterPassInput.placeholder = 'Incorrect Master Password';
+              masterPassInput.placeholder = res?.error || 'Incorrect Master Password';
               masterPassInput.style.borderColor = '#D93025';
             }
           }
@@ -237,7 +268,7 @@
     }
   }
 
-  // 3. Autofill inputs with synthetic event triggers
+  // 4. Autofill inputs with synthetic event triggers
   function performAutofill(data) {
     const { username, email, password } = data || {};
     let filledCount = 0;
@@ -300,14 +331,12 @@
     }, 2000);
   }
 
-  // 4. Save Password Prompt when creating a new account on any website
+  // 5. Save Password Prompt when creating a new account on any website
   function attachSavePasswordListeners() {
-    // Intercept form submission
     document.addEventListener('submit', (e) => {
       captureAndPromptSave(e.target);
     }, true);
 
-    // Intercept button clicks (Register, Sign Up, Create Account, Log In, Continue)
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('button, input[type="submit"]');
       if (!btn) return;
@@ -347,7 +376,6 @@
     promptSavePasswordCard(creds);
   }
 
-  // 5. Google Password Manager-style "Save password?" Card
   function promptSavePasswordCard(creds) {
     removeActiveCard();
 

@@ -1,13 +1,6 @@
-// Background Service Worker for Omnikey Password Manager & Smart Autofill
+// Background Service Worker for Omnikey Password Manager & Smart Autofill (Multi-User)
 
 const DEFAULT_SERVER_URL = 'https://omnikey4.onrender.com/api';
-
-const CANDIDATE_EMAILS = [
-  'drix.acc.0015@gmail.com',
-  'debasis.space@gmail.com',
-  'admin@omnikey.com',
-  'test@test.com'
-];
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Omnikey Service Worker] Extension installed/updated.');
@@ -63,7 +56,7 @@ async function fetchVaultItems(token, serverUrl) {
       return formatted;
     }
   } catch (err) {
-    console.warn('[Omnikey] Failed to sync vault items from cloud backend:', err);
+    console.warn('[Omnikey] Failed to sync vault items from backend:', err);
   }
   const stored = await chrome.storage.local.get(['vault_items']);
   return stored.vault_items || [];
@@ -77,7 +70,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const isUnlocked = Boolean(storage.token && storage.user);
     const vaultItems = storage.vault_items || [];
 
-    // 1. Check if the active page has matching credentials
+    // 1. Sync session directly from Omnikey web dashboard when any user logs in
+    if (request.action === 'syncWebSession') {
+      const { token, user } = request;
+      if (token && user && user.email) {
+        console.log(`[Omnikey] Syncing web session for user: ${user.email}`);
+        await chrome.storage.local.set({
+          token,
+          user,
+          remembered_email: user.email,
+          server_url: serverUrl
+        });
+        const items = await fetchVaultItems(token, serverUrl);
+        return { success: true, user, count: items.length };
+      }
+      return { success: false, error: 'Missing token or user data' };
+    }
+
+    // 2. Clear session when user logs out from web dashboard
+    if (request.action === 'webSessionLogout') {
+      console.log('[Omnikey] User logged out from web app. Locking extension.');
+      await chrome.storage.local.remove(['token', 'user']);
+      return { success: true };
+    }
+
+    // 3. Check if active page has matching credentials
     if (request.action === 'checkPageCredentials') {
       const targetHost = extractDomain(request.hostname || (sender.tab ? sender.tab.url : ''));
       const matches = vaultItems.filter(item => 
@@ -87,6 +104,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return {
         hasMatch: matches.length > 0,
         isUnlocked,
+        rememberedEmail: storage.remembered_email || (storage.user ? storage.user.email : null),
         matches: isUnlocked ? matches : matches.map(m => ({
           website: m.website,
           username: m.username || m.email || 'Saved Account'
@@ -95,77 +113,65 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
     }
 
-    // 2. Unlock vault with Master Password directly from the in-page prompt
+    // 4. Unlock vault with Master Password directly from the in-page prompt
     if (request.action === 'unlockVault') {
-      const { masterPassword, hostname } = request;
+      const { email, masterPassword, hostname } = request;
       const targetHost = extractDomain(hostname || (sender.tab ? sender.tab.url : ''));
 
-      let targetEmail = storage.remembered_email || (storage.user ? storage.user.email : '');
-      let loginData = null;
+      const targetEmail = (email || storage.remembered_email || (storage.user ? storage.user.email : '')).trim().toLowerCase();
 
-      const tryLogin = async (email, endpoint) => {
-        try {
-          const res = await fetch(`${endpoint}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password: masterPassword })
-          });
-          if (res.ok) return await res.json();
-        } catch (e) {}
-        return null;
-      };
-
-      // Try primary serverUrl
-      if (targetEmail) {
-        loginData = await tryLogin(targetEmail, serverUrl);
+      if (!targetEmail) {
+        return { success: false, error: 'Please enter your account email to unlock.' };
       }
 
-      if (!loginData) {
-        for (const candidate of CANDIDATE_EMAILS) {
-          loginData = await tryLogin(candidate, serverUrl);
-          if (loginData) {
-            targetEmail = candidate;
-            break;
-          }
+      if (!masterPassword) {
+        return { success: false, error: 'Please enter your master password.' };
+      }
+
+      try {
+        const res = await fetch(`${serverUrl}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: targetEmail, password: masterPassword })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.token) {
+          return { success: false, error: data.error || 'Invalid master password.' };
         }
-      }
 
-      // If cloud failed, try localhost as fallback
-      if (!loginData && serverUrl !== 'http://localhost:8080/api') {
-        loginData = await tryLogin(targetEmail || CANDIDATE_EMAILS[0], 'http://localhost:8080/api');
-      }
-
-      // Offline session fallback
-      if (!loginData) {
-        targetEmail = targetEmail || 'drix.acc.0015@gmail.com';
-        loginData = {
-          id: 'session-' + Date.now(),
-          name: 'Omnikey User',
+        const userData = {
+          id: data.id || data._id,
+          name: data.name || targetEmail.split('@')[0],
           email: targetEmail,
-          token: 'omnikey-jwt-token-' + Date.now()
+          token: data.token
         };
+
+        await chrome.storage.local.set({
+          token: data.token,
+          user: userData,
+          remembered_email: targetEmail,
+          server_url: serverUrl
+        });
+
+        const updatedVault = await fetchVaultItems(data.token, serverUrl);
+        const matches = updatedVault.filter(item => 
+          matchesDomain(targetHost, item.url, item.website)
+        );
+
+        return {
+          success: true,
+          matches,
+          user: userData
+        };
+      } catch (e) {
+        console.error('[Omnikey Background] Unlock network error:', e);
+        return { success: false, error: 'Cannot connect to authentication server.' };
       }
-
-      await chrome.storage.local.set({
-        token: loginData.token,
-        user: loginData,
-        remembered_email: targetEmail,
-        server_url: serverUrl
-      });
-
-      const updatedVault = await fetchVaultItems(loginData.token, serverUrl);
-      const matches = updatedVault.filter(item => 
-        matchesDomain(targetHost, item.url, item.website)
-      );
-
-      return {
-        success: true,
-        matches,
-        user: loginData
-      };
     }
 
-    // 3. Save new account/password to Omnikey Vault
+    // 5. Save new account/password to Omnikey Vault
     if (request.action === 'saveCredential') {
       const { website, url, username, email, password } = request.data || {};
       const cleanWebsite = website || extractDomain(url) || 'Web Login';
@@ -214,7 +220,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
     }
 
-    // 4. Trigger autofill to active tab
+    // 6. Trigger autofill to active tab
     if (request.action === 'autofillTab') {
       const tabId = request.tabId || (sender.tab ? sender.tab.id : null);
       if (tabId) {
