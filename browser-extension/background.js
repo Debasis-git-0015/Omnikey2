@@ -1,27 +1,24 @@
 // Background Service Worker for Omnikey Password Manager & Smart Autofill
 
-const DEFAULT_SERVER_URL = 'http://localhost:8080/api';
+const DEFAULT_SERVER_URL = 'https://omnikey4.onrender.com/api';
 
-// Candidate accounts for seamless background master-password authentication
 const CANDIDATE_EMAILS = [
   'drix.acc.0015@gmail.com',
   'debasis.space@gmail.com',
-  'dr@gmail.com',
-  'admin@omnikey.com'
+  'admin@omnikey.com',
+  'test@test.com'
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Omnikey Service Worker] Extension installed/updated.');
 
-  // Context Menu for right-click autofill
   chrome.contextMenus.create({
     id: 'omnikey-autofill',
-    title: '⚡ Autofill with Omnikey',
+    title: 'Autofill with Omnikey',
     contexts: ['editable']
   });
 });
 
-// Extract strict domain from URL (e.g. "https://github.com/login" -> "github.com")
 function extractDomain(urlStr) {
   if (!urlStr) return '';
   try {
@@ -36,7 +33,6 @@ function extractDomain(urlStr) {
   }
 }
 
-// Check if a vault item matches target domain strictly
 function matchesDomain(targetHost, vaultUrl, vaultWebsite) {
   if (!targetHost) return false;
   const vHost1 = extractDomain(vaultUrl);
@@ -50,7 +46,7 @@ function matchesDomain(targetHost, vaultUrl, vaultWebsite) {
   return check(vHost1) || check(vHost2);
 }
 
-// Fetch user's vault items from backend
+// Fetch user's vault items from cloud backend
 async function fetchVaultItems(token, serverUrl) {
   const apiUrl = (serverUrl || DEFAULT_SERVER_URL).replace(/\/$/, '');
   try {
@@ -67,7 +63,7 @@ async function fetchVaultItems(token, serverUrl) {
       return formatted;
     }
   } catch (err) {
-    console.warn('[Omnikey] Failed to sync vault items from backend:', err);
+    console.warn('[Omnikey] Failed to sync vault items from cloud backend:', err);
   }
   const stored = await chrome.storage.local.get(['vault_items']);
   return stored.vault_items || [];
@@ -104,13 +100,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const { masterPassword, hostname } = request;
       const targetHost = extractDomain(hostname || (sender.tab ? sender.tab.url : ''));
 
-      // Find user email to authenticate with
       let targetEmail = storage.remembered_email || (storage.user ? storage.user.email : '');
       let loginData = null;
 
-      const tryLogin = async (email) => {
+      const tryLogin = async (email, endpoint) => {
         try {
-          const res = await fetch(`${serverUrl}/auth/login`, {
+          const res = await fetch(`${endpoint}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password: masterPassword })
@@ -120,18 +115,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return null;
       };
 
+      // Try primary serverUrl
       if (targetEmail) {
-        loginData = await tryLogin(targetEmail);
+        loginData = await tryLogin(targetEmail, serverUrl);
       }
 
       if (!loginData) {
         for (const candidate of CANDIDATE_EMAILS) {
-          loginData = await tryLogin(candidate);
+          loginData = await tryLogin(candidate, serverUrl);
           if (loginData) {
             targetEmail = candidate;
             break;
           }
         }
+      }
+
+      // If cloud failed, try localhost as fallback
+      if (!loginData && serverUrl !== 'http://localhost:8080/api') {
+        loginData = await tryLogin(targetEmail || CANDIDATE_EMAILS[0], 'http://localhost:8080/api');
       }
 
       // Offline session fallback
@@ -145,7 +146,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         };
       }
 
-      // Save token and session
       await chrome.storage.local.set({
         token: loginData.token,
         user: loginData,
@@ -153,7 +153,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         server_url: serverUrl
       });
 
-      // Sync latest vault items from backend
       const updatedVault = await fetchVaultItems(loginData.token, serverUrl);
       const matches = updatedVault.filter(item => 
         matchesDomain(targetHost, item.url, item.website)
@@ -203,7 +202,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       }
 
-      // Update local storage cache so next page load detects it immediately
+      // Update local storage cache
       const currentVault = storage.vault_items || [];
       const updatedVault = [newItem, ...currentVault];
       await chrome.storage.local.set({ vault_items: updatedVault });
@@ -236,7 +235,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ error: err.message });
   });
 
-  return true; // Keep sendResponse open asynchronously
+  return true;
 });
 
 // Handle Context Menu click

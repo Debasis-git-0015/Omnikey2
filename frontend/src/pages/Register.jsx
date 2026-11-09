@@ -55,6 +55,8 @@ const Register = () => {
     setIsSubmitting(true);
     const result = await register(trimmedName, trimmedEmail, password);
     if (result.success) {
+      localStorage.setItem('omnikey_new_user_registered', 'true');
+      localStorage.removeItem('omnikey_ext_setup_shown');
       navigate('/dashboard');
     } else {
       setError(result.error);

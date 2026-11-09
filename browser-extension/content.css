@@ -1,68 +1,66 @@
-/* Scoped In-Page CSS for Omnikey Password Manager & Smart Autofill */
+/* Google-style Light Theme for In-Page Omnikey Prompts (Autofill & Save Password) */
 
 /* Toast Message */
-.omnikey-toast {
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  z-index: 2147483647;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
-  background: #172033;
-  color: #ffffff;
-  border-radius: 14px;
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-  transform: translateY(-20px);
-  opacity: 0;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.omnikey-toast.show {
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.omnikey-toast.success {
-  background: #172033;
-  border-left: 4px solid #42A982;
-}
-
-.omnikey-toast.warning {
-  background: #172033;
-  border-left: 4px solid #D99A45;
-}
-
-/* Floating Omnikey Card (For both Autofill and Save Password) */
-.omnikey-floating-card {
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  width: 330px;
-  background: #ffffff !important;
-  border: 1px solid #E6EBF2 !important;
-  border-radius: 22px !important;
-  box-shadow: 0 16px 45px -8px rgba(23, 32, 51, 0.16), 0 0 0 1px rgba(79, 124, 255, 0.08) !important;
-  padding: 22px 20px 20px 20px !important;
+.omnikey-g-toast {
+  position: fixed !important;
+  top: 24px !important;
+  right: 24px !important;
   z-index: 2147483647 !important;
-  transform: scale(0.95) translateY(-10px);
-  opacity: 0;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-  color: #172033 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 18px !important;
+  background: #323232 !important;
+  color: #FFFFFF !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+  transform: translateY(-20px) !important;
+  opacity: 0 !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  pointer-events: none !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.omnikey-g-toast.show {
+  transform: translateY(0) !important;
+  opacity: 1 !important;
+}
+
+.omnikey-g-toast.success {
+  background: #137333 !important;
+}
+
+.omnikey-g-toast.warning {
+  background: #E37400 !important;
+}
+
+/* Floating Card Container (Google Password Manager Design) */
+.omnikey-g-card {
+  position: fixed !important;
+  top: 20px !important;
+  right: 24px !important;
+  width: 320px !important;
+  background: #FFFFFF !important;
+  border: 1px solid #DADCE0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px rgba(60, 64, 67, 0.2) !important;
+  padding: 16px !important;
+  z-index: 2147483647 !important;
+  transform: scale(0.96) translateY(-10px) !important;
+  opacity: 0 !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  color: #202124 !important;
   box-sizing: border-box !important;
   line-height: 1.4 !important;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: antialiased !important;
 }
 
-.omnikey-floating-card.show {
-  transform: scale(1) translateY(0);
-  opacity: 1;
+.omnikey-g-card.show {
+  transform: scale(1) translateY(0) !important;
+  opacity: 1 !important;
 }
 
 /* Card Header */
@@ -70,197 +68,170 @@
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  margin-bottom: 14px !important;
+  margin-bottom: 12px !important;
 }
 
-.omnikey-brand-box {
+.omnikey-brand-line {
   display: flex !important;
   align-items: center !important;
-  gap: 10px !important;
+  gap: 8px !important;
 }
 
 .omnikey-shield-icon {
-  width: 32px !important;
-  height: 32px !important;
-  border-radius: 10px !important;
-  background: #4F7CFF !important;
-  color: #ffffff !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 4px !important;
+  background: #1A73E8 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  box-shadow: 0 3px 10px rgba(79, 124, 255, 0.35) !important;
   flex-shrink: 0 !important;
 }
 
 .omnikey-brand-title {
-  font-size: 14px !important;
-  font-weight: 700 !important;
-  color: #172033 !important;
-  letter-spacing: -0.2px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #202124 !important;
 }
 
-.omnikey-close-btn {
-  background: transparent !important;
+.omnikey-btn-close {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
   border: none !important;
-  color: #94A3B8 !important;
+  background: transparent !important;
+  color: #5F6368 !important;
   cursor: pointer !important;
-  padding: 4px !important;
-  border-radius: 8px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  font-size: 18px !important;
-  line-height: 1 !important;
-  transition: all 0.15s ease !important;
+  font-size: 14px !important;
+  transition: background-color 0.15s !important;
 }
 
-.omnikey-close-btn:hover {
-  background: #F4F7FB !important;
-  color: #172033 !important;
+.omnikey-btn-close:hover {
+  background-color: #F1F3F4 !important;
+  color: #202124 !important;
 }
 
-/* Headings */
+/* Card Title & Content */
 .omnikey-card-title {
-  font-size: 16px !important;
-  font-weight: 800 !important;
-  color: #172033 !important;
-  margin: 0 0 4px 0 !important;
-  letter-spacing: -0.3px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: #202124 !important;
+  margin-bottom: 4px !important;
 }
 
 .omnikey-card-subtitle {
   font-size: 12px !important;
-  color: #64748B !important;
-  margin: 0 0 16px 0 !important;
+  color: #5F6368 !important;
+  margin-bottom: 14px !important;
   line-height: 1.4 !important;
 }
 
-/* Field Rows matching user's reference image */
+/* Field Display Rows */
 .omnikey-field-row {
-  background: #F8FAFC !important;
-  border: 1px solid #E6EBF2 !important;
-  border-radius: 14px !important;
-  padding: 12px 14px !important;
-  margin-bottom: 10px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  gap: 12px !important;
+  padding: 8px 10px !important;
+  background: #F8F9FA !important;
+  border-radius: 6px !important;
+  margin-bottom: 8px !important;
+  font-size: 12px !important;
 }
 
 .omnikey-field-label {
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  color: #64748B !important;
+  font-weight: 600 !important;
+  color: #5F6368 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.6px !important;
-  flex-shrink: 0 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.3px !important;
 }
 
-.omnikey-field-val {
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  color: #172033 !important;
-  max-width: 180px !important;
+.omnikey-field-value {
+  font-weight: 500 !important;
+  color: #202124 !important;
+  max-width: 190px !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
-  text-align: right !important;
 }
 
 .omnikey-field-pass {
-  font-size: 15px !important;
-  font-weight: 800 !important;
   letter-spacing: 2px !important;
-  color: #172033 !important;
+  font-size: 14px !important;
 }
 
-/* Master Password Unlock Box for locked vaults */
+/* Unlock Input Section (When vault is locked) */
 .omnikey-unlock-section {
-  margin-top: 10px !important;
-  margin-bottom: 6px !important;
-}
-
-.omnikey-unlock-input-wrap {
-  display: flex !important;
-  align-items: center !important;
-  background: #F8FAFC !important;
-  border: 1px solid #E6EBF2 !important;
-  border-radius: 14px !important;
-  padding: 4px 6px 4px 12px !important;
-  transition: all 0.15s ease !important;
-}
-
-.omnikey-unlock-input-wrap:focus-within {
-  border-color: #4F7CFF !important;
-  background: #ffffff !important;
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.2) !important;
+  margin: 10px 0 !important;
 }
 
 .omnikey-unlock-input {
-  flex: 1 !important;
-  border: none !important;
-  background: transparent !important;
-  padding: 8px 0 !important;
-  font-size: 12px !important;
-  color: #172033 !important;
+  width: 100% !important;
+  height: 36px !important;
+  padding: 0 10px !important;
+  border: 1px solid #DADCE0 !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  color: #202124 !important;
   outline: none !important;
+  box-sizing: border-box !important;
+  background: #FFFFFF !important;
 }
 
-/* Action Buttons matching user's reference image */
-.omnikey-card-actions {
+.omnikey-unlock-input:focus {
+  border-color: #1A73E8 !important;
+  box-shadow: 0 0 0 1px #1A73E8 !important;
+}
+
+/* Actions Row */
+.omnikey-actions-row {
   display: flex !important;
   align-items: center !important;
-  gap: 10px !important;
-  margin-top: 16px !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  margin-top: 14px !important;
 }
 
 .omnikey-btn {
-  flex: 1 !important;
-  padding: 11px 14px !important;
-  border-radius: 14px !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
   cursor: pointer !important;
-  border: none !important;
-  transition: all 0.15s ease !important;
-  display: flex !important;
+  display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 6px !important;
-  box-sizing: border-box !important;
-  line-height: 1 !important;
+  transition: background-color 0.15s, box-shadow 0.15s !important;
+  border: none !important;
 }
 
 .omnikey-btn-secondary {
-  background: #F4F7FB !important;
-  color: #475467 !important;
-  border: 1px solid #E6EBF2 !important;
+  background: transparent !important;
+  color: #1A73E8 !important;
 }
 
 .omnikey-btn-secondary:hover {
-  background: #EEF4FF !important;
-  color: #172033 !important;
-  border-color: #D5E3FF !important;
+  background: #F1F3F4 !important;
 }
 
 .omnikey-btn-primary {
-  background: #4F7CFF !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(79, 124, 255, 0.35) !important;
+  background: #1A73E8 !important;
+  color: #FFFFFF !important;
 }
 
 .omnikey-btn-primary:hover {
-  background: #3D68E8 !important;
+  background: #1557B0 !important;
+  box-shadow: 0 1px 2px rgba(60,64,67,0.3) !important;
 }
 
-.omnikey-btn-primary:active {
-  background: #2D56D8 !important;
-}
-
-/* Highlight pulse on webpage inputs */
-.omnikey-autofilled-pulse {
-  border-color: #42A982 !important;
-  box-shadow: 0 0 0 3px rgba(66, 169, 130, 0.35) !important;
-  transition: all 0.3s ease !important;
+/* Highlight Input Animation on Fill */
+.omnikey-pulse-fill {
+  transition: all 0.4s ease !important;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.4) !important;
+  border-color: #1A73E8 !important;
+  background-color: #E8F0FE !important;
 }

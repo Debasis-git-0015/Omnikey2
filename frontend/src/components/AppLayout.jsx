@@ -45,11 +45,15 @@ const AppLayout = () => {
 
   // Automatically trigger extension setup prompt for first-time / new users
   useEffect(() => {
+    const isNewUser = localStorage.getItem('omnikey_new_user_registered');
     const extModalShown = localStorage.getItem('omnikey_ext_setup_shown');
-    if (!extModalShown) {
+    if (isNewUser || !extModalShown) {
       const timer = setTimeout(() => {
         setShowExtensionModal(true);
-      }, 1200);
+        if (isNewUser) {
+          localStorage.removeItem('omnikey_new_user_registered');
+        }
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, []);

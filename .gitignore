@@ -12,6 +12,7 @@ frontend/.env
 
 # Large archives & zip backups
 *.zip
+!frontend/public/omnikey-autofill-extension.zip
 backend.zip
 
 # Local mock database & test dumps
