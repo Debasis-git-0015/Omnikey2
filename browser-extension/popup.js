@@ -1,4 +1,4 @@
-// Google-style Omnikey Extension Popup Controller (Direct Master Password Unlock)
+// Google-style Omnikey Extension Popup Controller (Multi-User & Website Password Search)
 
 document.addEventListener('DOMContentLoaded', () => {
   // Elements
@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const domainBadgeEl = document.getElementById('domain-badge');
 
   const formUnlock = document.getElementById('form-unlock');
+  const inputEmail = document.getElementById('input-email');
   const inputMasterPassword = document.getElementById('input-master-password');
   const btnTogglePassword = document.getElementById('btn-toggle-password');
   const eyeIcon = document.getElementById('eye-icon');
@@ -42,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 3200);
   }
 
-  // Toggle password visibility
+  // Toggle password visibility in unlock input
   if (btnTogglePassword && inputMasterPassword) {
     btnTogglePassword.addEventListener('click', () => {
       const isPass = inputMasterPassword.type === 'password';
@@ -102,6 +103,31 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeState();
   });
 
+  async function getDetectedEmail() {
+    const storage = await chrome.storage.local.get(['browser_email', 'remembered_email', 'user']);
+    if (storage.browser_email) return storage.browser_email;
+    if (storage.user && storage.user.email) return storage.user.email;
+    if (storage.remembered_email) return storage.remembered_email;
+
+    return new Promise((resolve) => {
+      try {
+        if (chrome.identity && chrome.identity.getProfileUserInfo) {
+          chrome.identity.getProfileUserInfo((info) => {
+            if (info && info.email) {
+              resolve(info.email.trim().toLowerCase());
+            } else {
+              resolve('');
+            }
+          });
+        } else {
+          resolve('');
+        }
+      } catch (e) {
+        resolve('');
+      }
+    });
+  }
+
   async function initializeState() {
     const storage = await chrome.storage.local.get(['token', 'user', 'vault_items', 'server_url']);
     
@@ -113,11 +139,12 @@ document.addEventListener('DOMContentLoaded', () => {
       userVaultItems = storage.vault_items || [];
       showUnlockedView(storage.user, userVaultItems);
     } else {
-      showLockedView();
+      const email = await getDetectedEmail();
+      showLockedView(email);
     }
   }
 
-  function showLockedView() {
+  function showLockedView(prefillEmail = '') {
     stateLocked.classList.remove('hidden');
     stateUnlocked.classList.add('hidden');
 
@@ -125,10 +152,18 @@ document.addEventListener('DOMContentLoaded', () => {
     btnLock.classList.add('hidden');
     btnLogout.classList.add('hidden');
 
+    if (inputEmail && prefillEmail) {
+      inputEmail.value = prefillEmail;
+    }
     inputMasterPassword.value = '';
     btnUnlockSubmit.disabled = false;
-    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
-    setTimeout(() => inputMasterPassword.focus(), 100);
+    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
+
+    if (inputEmail && !inputEmail.value) {
+      setTimeout(() => inputEmail.focus(), 100);
+    } else {
+      setTimeout(() => inputMasterPassword.focus(), 100);
+    }
   }
 
   function showUnlockedView(user, items) {
@@ -163,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       matchingCredentialsContainer.innerHTML = `
         <div class="empty-box">
-          <p class="empty-text">No saved passwords for <strong>${escapeHtml(currentTargetHostname || 'this site')}</strong>.<br>When you log in or register, Omnikey will offer to save it!</p>
+          <p class="empty-text">No saved passwords for <strong>${escapeHtml(currentTargetHostname || 'this site')}</strong> in this vault.<br>When you log in or register, Omnikey will offer to save it!</p>
         </div>
       `;
     }
@@ -194,6 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const title = item.website || extractHostname(item.url) || 'Login';
     const user = item.username || item.email || 'No username';
+    const plainPass = item.password || '';
     const initial = title.charAt(0).toUpperCase() || '🔑';
 
     card.innerHTML = `
@@ -202,10 +238,20 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="cred-details">
           <div class="cred-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
           <div class="cred-user" title="${escapeHtml(user)}">${escapeHtml(user)}</div>
+          <div class="cred-pass-preview" style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+            <span class="pass-mask" style="font-family:monospace; font-size:12px; letter-spacing:1px; color:#5F6368;">••••••••••••</span>
+            <span class="pass-plain hidden" style="font-family:monospace; font-size:12px; color:#1A73E8; font-weight:500;">${escapeHtml(plainPass)}</span>
+          </div>
         </div>
       </div>
       <div class="cred-actions">
-        <button class="btn-fill" data-id="${item._id || item.id}">Fill</button>
+        <button class="btn-fill" data-id="${item._id || item.id}" title="Autofill this account">Fill</button>
+        <button class="btn-toggle-view" title="Show / Hide Password">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
         <button class="btn-copy" data-type="user" title="Copy username">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -221,11 +267,23 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
+    // Fill button
     const fillBtn = card.querySelector('.btn-fill');
     fillBtn.addEventListener('click', () => {
       triggerAutofill(item);
     });
 
+    // Eye toggle button to show/hide plaintext password
+    const toggleViewBtn = card.querySelector('.btn-toggle-view');
+    const maskSpan = card.querySelector('.pass-mask');
+    const plainSpan = card.querySelector('.pass-plain');
+    toggleViewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      maskSpan.classList.toggle('hidden');
+      plainSpan.classList.toggle('hidden');
+    });
+
+    // Copy buttons
     const copyBtns = card.querySelectorAll('.btn-copy');
     copyBtns.forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -255,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (chrome.runtime.lastError) {
         showToast('Please open an active webpage to autofill', 'error');
       } else {
-        showToast('Filled credentials!');
+        showToast('Filled credentials into form!');
         setTimeout(() => window.close(), 400);
       }
     });
@@ -277,10 +335,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderAllItemsList(filtered);
   });
 
-  // Unlock Submit via Master Password
+  // Unlock Submit via Email + Master Password
   formUnlock.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const targetEmail = inputEmail ? inputEmail.value.trim().toLowerCase() : '';
     const masterPassword = inputMasterPassword.value.trim();
 
     if (!masterPassword) {
@@ -293,14 +352,21 @@ document.addEventListener('DOMContentLoaded', () => {
     await chrome.storage.local.set({ server_url: serverUrl });
 
     btnUnlockSubmit.disabled = true;
-    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlocking Vault...';
+    btnUnlockSubmit.querySelector('.btn-text').textContent = 'Searching Vault...';
 
     try {
-      // Direct Master Password Unlock: The master password maps to the account!
+      const payload = {
+        password: masterPassword,
+        hostname: currentTargetHostname
+      };
+      if (targetEmail) {
+        payload.email = targetEmail;
+      }
+
       const res = await fetch(`${serverUrl}/auth/master-unlock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: masterPassword })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
@@ -309,12 +375,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const errorMsg = data.error || data.message || 'Incorrect Master Password. Please try again.';
         showToast(errorMsg, 'error');
         btnUnlockSubmit.disabled = false;
-        btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
+        btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
         inputMasterPassword.focus();
         return;
       }
 
-      // Successful unlock for the matched account
+      // Successful unlock for the specific email vault!
       const userData = {
         id: data.id || data._id,
         name: data.name || data.email?.split('@')[0] || 'Omnikey User',
@@ -328,30 +394,32 @@ document.addEventListener('DOMContentLoaded', () => {
         token: data.token,
         user: userData,
         vault_items: items,
+        browser_email: userData.email,
+        remembered_email: userData.email,
         server_url: serverUrl
       });
 
       btnUnlockSubmit.disabled = false;
-      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
+      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
 
-      showToast(`Welcome back, ${userData.name || userData.email}!`);
+      showToast(`Vault unlocked for ${userData.email}!`);
       showUnlockedView(userData, items);
 
-      // Notify active tab that vault is unlocked so in-page prompts update immediately
+      // Notify active tab that vault is unlocked so in-page prompts update immediately with all passwords!
       if (activeTabId) {
         chrome.tabs.sendMessage(activeTabId, {
           action: 'vaultUnlocked',
           user: userData,
           vault_items: items
         }, () => {
-          if (chrome.runtime.lastError) {} // Ignore if tab is not content script page
+          if (chrome.runtime.lastError) {}
         });
       }
     } catch (netErr) {
       console.error('Master unlock network error:', netErr);
       showToast('Cannot connect to Omnikey server. Check API URL.', 'error');
       btnUnlockSubmit.disabled = false;
-      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault';
+      btnUnlockSubmit.querySelector('.btn-text').textContent = 'Unlock Vault & Show Passwords';
     }
   });
 
@@ -359,14 +427,15 @@ document.addEventListener('DOMContentLoaded', () => {
   btnLock.addEventListener('click', async () => {
     await chrome.storage.local.remove(['token', 'user']);
     showToast('Vault locked');
-    showLockedView();
+    const email = await getDetectedEmail();
+    showLockedView(email);
   });
 
   // Sign Out / Clear All
   btnLogout.addEventListener('click', async () => {
     await chrome.storage.local.remove(['token', 'user', 'vault_items']);
     showToast('Signed out of Omnikey');
-    showLockedView();
+    showLockedView('');
   });
 
   // Refresh Sync Action

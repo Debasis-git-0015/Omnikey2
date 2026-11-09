@@ -235,3 +235,123 @@
   border-color: #1A73E8 !important;
   background-color: #E8F0FE !important;
 }
+
+/* Multi-credential list for specific website */
+.omnikey-creds-container {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  max-height: 220px !important;
+  overflow-y: auto !important;
+  margin: 10px 0 !important;
+  padding-right: 2px !important;
+}
+
+.omnikey-cred-item {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 10px 12px !important;
+  background: #F8F9FA !important;
+  border: 1px solid #E8EAED !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+}
+
+.omnikey-cred-item:hover {
+  border-color: #1A73E8 !important;
+  background: #FFFFFF !important;
+  box-shadow: 0 1px 4px rgba(60,64,67,0.1) !important;
+}
+
+.omnikey-cred-top {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 6px !important;
+}
+
+.omnikey-cred-username {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #202124 !important;
+  max-width: 190px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.omnikey-cred-bottom {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+.omnikey-pass-display {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 13px !important;
+}
+
+.omnikey-pass-masked {
+  letter-spacing: 2px !important;
+  color: #5F6368 !important;
+  font-family: monospace !important;
+}
+
+.omnikey-pass-plain {
+  font-family: monospace !important;
+  color: #1A73E8 !important;
+  font-weight: 500 !important;
+}
+
+.omnikey-icon-btn {
+  background: transparent !important;
+  border: none !important;
+  color: #5F6368 !important;
+  cursor: pointer !important;
+  padding: 2px 4px !important;
+  border-radius: 4px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 13px !important;
+}
+
+.omnikey-icon-btn:hover {
+  background: #E8EAED !important;
+  color: #202124 !important;
+}
+
+.omnikey-btn-fill-item {
+  height: 26px !important;
+  padding: 0 10px !important;
+  background: #1A73E8 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s !important;
+}
+
+.omnikey-btn-fill-item:hover {
+  background: #1557B0 !important;
+}
+
+.omnikey-account-tag {
+  font-size: 11px !important;
+  color: #1A73E8 !important;
+  background: #E8F0FE !important;
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  display: inline-block !important;
+  margin-bottom: 8px !important;
+  font-weight: 500 !important;
+}
+
+.omnikey-hidden {
+  display: none !important;
+}

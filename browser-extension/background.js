@@ -62,10 +62,31 @@ async function fetchVaultItems(token, serverUrl) {
   return stored.vault_items || [];
 }
 
+// Resolve the browser profile email if available (via chrome.identity)
+function getBrowserProfileEmail() {
+  return new Promise((resolve) => {
+    try {
+      if (chrome.identity && chrome.identity.getProfileUserInfo) {
+        chrome.identity.getProfileUserInfo((info) => {
+          if (chrome.runtime.lastError || !info || !info.email) {
+            resolve(null);
+          } else {
+            resolve(info.email.trim().toLowerCase());
+          }
+        });
+      } else {
+        resolve(null);
+      }
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const handleMessage = async () => {
-    const storage = await chrome.storage.local.get(['token', 'user', 'vault_items', 'server_url', 'remembered_email']);
+    const storage = await chrome.storage.local.get(['token', 'user', 'vault_items', 'server_url', 'remembered_email', 'browser_email']);
     const serverUrl = storage.server_url || DEFAULT_SERVER_URL;
     const isUnlocked = Boolean(storage.token && storage.user);
     const vaultItems = storage.vault_items || [];
@@ -78,6 +99,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await chrome.storage.local.set({
           token,
           user,
+          browser_email: user.email,
           remembered_email: user.email,
           server_url: serverUrl
         });
@@ -94,9 +116,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return { success: true };
     }
 
-    // 3. Check if active page has matching credentials
+    // 3. Check if active page has matching credentials & detect user email
     if (request.action === 'checkPageCredentials') {
       const targetHost = extractDomain(request.hostname || (sender.tab ? sender.tab.url : ''));
+      const profileEmail = await getBrowserProfileEmail();
+      const detectedEmail = request.pageEmail || storage.browser_email || (storage.user ? storage.user.email : null) || storage.remembered_email || profileEmail;
+
       const matches = vaultItems.filter(item => 
         matchesDomain(targetHost, item.url, item.website)
       );
@@ -104,18 +129,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return {
         hasMatch: matches.length > 0,
         isUnlocked,
-        rememberedEmail: storage.remembered_email || (storage.user ? storage.user.email : null),
-        matches: isUnlocked ? matches : matches.map(m => ({
-          website: m.website,
-          username: m.username || m.email || 'Saved Account'
-        })),
+        detectedEmail: detectedEmail || null,
+        matches: matches,
+        totalVaultCount: vaultItems.length,
         hostname: targetHost
       };
     }
 
-    // 4. Unlock vault with Master Password directly (Sole Key - Multi-User Decoupled)
+    // 4. Unlock vault for specific email & master password, and retrieve all site passwords
     if (request.action === 'unlockVault') {
-      const { masterPassword, password, hostname } = request;
+      const { email, masterPassword, password, hostname } = request;
       const pwd = (masterPassword || password || '').trim();
       const targetHost = extractDomain(hostname || (sender.tab ? sender.tab.url : ''));
 
@@ -123,11 +146,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return { success: false, error: 'Please enter your Master Password.' };
       }
 
+      const profileEmail = await getBrowserProfileEmail();
+      const targetEmail = (email || storage.browser_email || (storage.user ? storage.user.email : null) || storage.remembered_email || profileEmail || '').trim().toLowerCase();
+
       try {
+        const payload = {
+          password: pwd,
+          hostname: targetHost
+        };
+        if (targetEmail) {
+          payload.email = targetEmail;
+        }
+
         const res = await fetch(`${serverUrl}/auth/master-unlock`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pwd })
+          body: JSON.stringify(payload)
         });
 
         const data = await res.json();
@@ -149,6 +183,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           token: data.token,
           user: userData,
           vault_items: vaultItems,
+          browser_email: userData.email,
+          remembered_email: userData.email,
           server_url: serverUrl
         });
 
@@ -158,7 +194,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         return {
           success: true,
-          matches,
+          matches: matches.length > 0 ? matches : (data.site_matches || []),
+          all_items: vaultItems,
           user: userData
         };
       } catch (e) {

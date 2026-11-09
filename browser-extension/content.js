@@ -81,20 +81,39 @@
     return true;
   });
 
+  function getPageEmail() {
+    const inputs = document.querySelectorAll('input:not([type="password"]):not([type="hidden"])');
+    for (const input of inputs) {
+      const val = (input.value || '').trim();
+      if (val && val.includes('@') && val.includes('.')) {
+        return val.toLowerCase();
+      }
+    }
+    return '';
+  }
+
   // Initialize Page Detection
   initPageDetection();
 
   function initPageDetection() {
+    const pageEmail = getPageEmail();
     chrome.runtime.sendMessage({
       action: 'checkPageCredentials',
-      hostname: window.location.hostname
+      hostname: window.location.hostname,
+      pageEmail: pageEmail
     }, (response) => {
       if (chrome.runtime.lastError || !response) return;
       pageCredentialsState = response;
 
-      // If this website has a matching vault entry, pop up the autofill prompt
-      if (response.hasMatch && response.matches && response.matches.length > 0) {
-        showAutofillCard(response.matches[0], response.isUnlocked);
+      // If unlocked and has matches, show autofill card with ALL matching passwords!
+      if (response.isUnlocked && response.matches && response.matches.length > 0) {
+        showAutofillCard(response.matches, true, response.detectedEmail);
+      } else if (!response.isUnlocked) {
+        // If locked but page has a password field, ready the unlock prompt
+        const hasPasswordField = Boolean(document.querySelector('input[type="password"]'));
+        if (hasPasswordField || response.hasMatch) {
+          showAutofillCard(response.matches || [], false, response.detectedEmail);
+        }
       }
       attachInputReopenListeners();
     });
@@ -127,73 +146,132 @@
 
       if (input.type === 'password' || isUsernameOrEmailInput(input)) {
         input.addEventListener('focus', () => {
-          if (!activeCard && pageCredentialsState && pageCredentialsState.hasMatch) {
-            showAutofillCard(pageCredentialsState.matches[0], pageCredentialsState.isUnlocked);
+          if (!activeCard && pageCredentialsState) {
+            showAutofillCard(pageCredentialsState.matches || [], pageCredentialsState.isUnlocked, pageCredentialsState.detectedEmail);
           }
         });
       }
     });
   }
 
-  // 3. Google-Style Autofill Prompt Card
-  function showAutofillCard(credential, isUnlocked) {
+  // 3. Google-Style Autofill Prompt Card (Showing ALL passwords for the specific website)
+  function showAutofillCard(matches, isUnlocked, detectedEmail) {
     removeActiveCard();
 
     const domain = window.location.hostname.replace(/^www\./, '');
-    const username = credential.username || credential.email || 'Saved Account';
+    const credList = Array.isArray(matches) ? matches : (matches ? [matches] : []);
 
     const card = document.createElement('div');
     card.id = 'omnikey-autofill-card';
     card.className = 'omnikey-g-card';
 
-    card.innerHTML = `
-      <div class="omnikey-card-header">
-        <div class="omnikey-brand-line">
-          <div class="omnikey-shield-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L3 6V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V6L12 2Z" fill="#FFFFFF"/>
-            </svg>
+    // Build the Card HTML
+    if (isUnlocked) {
+      let credsHtml = '';
+      if (credList.length > 0) {
+        credsHtml = `
+          <div class="omnikey-creds-container">
+            ${credList.map((cred, idx) => {
+              const u = cred.username || cred.email || 'Saved Account';
+              const p = cred.password || '';
+              return `
+                <div class="omnikey-cred-item" data-index="${idx}">
+                  <div class="omnikey-cred-top">
+                    <span class="omnikey-cred-username" title="${escapeHtml(u)}">${escapeHtml(u)}</span>
+                    <button class="omnikey-btn-fill-item" data-index="${idx}">Fill</button>
+                  </div>
+                  <div class="omnikey-cred-bottom">
+                    <div class="omnikey-pass-display">
+                      <span class="omnikey-pass-masked" id="pass-mask-${idx}">••••••••••••</span>
+                      <span class="omnikey-pass-plain omnikey-hidden" id="pass-plain-${idx}">${escapeHtml(p)}</span>
+                      <button type="button" class="omnikey-icon-btn omnikey-toggle-eye" data-index="${idx}" title="Show/Hide Password">
+                        👁
+                      </button>
+                      <button type="button" class="omnikey-icon-btn omnikey-copy-pass" data-pass="${escapeHtml(p)}" title="Copy Password">
+                        📋
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
-          <span class="omnikey-brand-title">Omnikey Password Manager</span>
+        `;
+      } else {
+        credsHtml = `
+          <div style="padding: 10px; background: #F8F9FA; border-radius: 8px; font-size: 12px; color: #5F6368; margin: 10px 0;">
+            No saved passwords found in this vault for <strong>${escapeHtml(domain)}</strong>.
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="omnikey-card-header">
+          <div class="omnikey-brand-line">
+            <div class="omnikey-shield-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L3 6V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V6L12 2Z" fill="#FFFFFF"/>
+              </svg>
+            </div>
+            <span class="omnikey-brand-title">Omnikey Password Manager</span>
+          </div>
+          <button class="omnikey-btn-close" id="omnikey-dismiss-btn" title="Dismiss">✕</button>
         </div>
-        <button class="omnikey-btn-close" id="omnikey-dismiss-btn" title="Dismiss">✕</button>
-      </div>
 
-      <div class="omnikey-card-title">Autofill password for ${escapeHtml(domain)}?</div>
-      <div class="omnikey-card-subtitle">Use your saved credentials to sign in automatically.</div>
+        <div class="omnikey-account-tag">Vault: ${escapeHtml(detectedEmail || 'Active User')}</div>
+        <div class="omnikey-card-title">Saved Passwords for ${escapeHtml(domain)} (${credList.length})</div>
+        <div class="omnikey-card-subtitle">Select an account to autofill or view saved credentials:</div>
 
-      <div class="omnikey-field-row">
-        <span class="omnikey-field-label">Username</span>
-        <span class="omnikey-field-value">${escapeHtml(username)}</span>
-      </div>
+        ${credsHtml}
 
-      <div class="omnikey-field-row">
-        <span class="omnikey-field-label">Password</span>
-        <span class="omnikey-field-value omnikey-field-pass">••••••••••••</span>
-      </div>
+        <div class="omnikey-actions-row">
+          <button class="omnikey-btn omnikey-btn-secondary" id="omnikey-dismiss-btn-2">Close</button>
+          ${credList.length > 0 ? `
+            <button class="omnikey-btn omnikey-btn-primary" id="omnikey-autofill-primary">
+              <span>Autofill Best Match</span>
+            </button>
+          ` : ''}
+        </div>
+      `;
+    } else {
+      // Locked view: Prompt for Master Password to search this email's vault for this website!
+      card.innerHTML = `
+        <div class="omnikey-card-header">
+          <div class="omnikey-brand-line">
+            <div class="omnikey-shield-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L3 6V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V6L12 2Z" fill="#FFFFFF"/>
+              </svg>
+            </div>
+            <span class="omnikey-brand-title">Omnikey Password Manager</span>
+          </div>
+          <button class="omnikey-btn-close" id="omnikey-dismiss-btn" title="Dismiss">✕</button>
+        </div>
 
-      ${!isUnlocked ? `
+        <div class="omnikey-card-title">Autofill passwords for ${escapeHtml(domain)}?</div>
+        <div class="omnikey-card-subtitle">Enter your Master Password to search your vault and show all saved passwords for this site.</div>
+
         <div class="omnikey-unlock-section">
-          <input type="password" class="omnikey-unlock-input" id="omnikey-master-pass" placeholder="Enter Master Password to unlock" autofocus>
+          <label style="font-size: 11px; font-weight: 600; color: #5F6368; display: block; margin-bottom: 4px;">ACCOUNT EMAIL</label>
+          <input type="email" class="omnikey-unlock-input" id="omnikey-user-email" value="${escapeHtml(detectedEmail || '')}" placeholder="Enter your Omnikey email" style="margin-bottom: 8px;">
+          
+          <label style="font-size: 11px; font-weight: 600; color: #5F6368; display: block; margin-bottom: 4px;">MASTER PASSWORD</label>
+          <input type="password" class="omnikey-unlock-input" id="omnikey-master-pass" placeholder="Enter Master Password" autofocus>
+          <div id="omnikey-error-msg" style="color: #D93025; font-size: 11px; margin-top: 4px; display: none;"></div>
         </div>
-      ` : ''}
 
-      <div class="omnikey-actions-row">
-        <button class="omnikey-btn omnikey-btn-secondary" id="omnikey-action-never">Never</button>
-        <button class="omnikey-btn omnikey-btn-primary" id="omnikey-action-autofill">
-          <span>${!isUnlocked ? 'Unlock & Fill' : 'Fill'}</span>
-        </button>
-      </div>
-    `;
+        <div class="omnikey-actions-row">
+          <button class="omnikey-btn omnikey-btn-secondary" id="omnikey-dismiss-btn-2">Never</button>
+          <button class="omnikey-btn omnikey-btn-primary" id="omnikey-action-unlock">
+            <span>Unlock & Show Passwords</span>
+          </button>
+        </div>
+      `;
+    }
 
     document.body.appendChild(card);
     activeCard = card;
     setTimeout(() => card.classList.add('show'), 40);
-
-    const btnDismiss = card.querySelector('#omnikey-dismiss-btn');
-    const btnNever = card.querySelector('#omnikey-action-never');
-    const btnAutofill = card.querySelector('#omnikey-action-autofill');
-    const masterPassInput = card.querySelector('#omnikey-master-pass');
 
     const closeCard = () => {
       card.classList.remove('show');
@@ -203,77 +281,119 @@
       }, 200);
     };
 
-    btnDismiss.addEventListener('click', closeCard);
-    btnNever.addEventListener('click', closeCard);
+    const btnClose1 = card.querySelector('#omnikey-dismiss-btn');
+    const btnClose2 = card.querySelector('#omnikey-dismiss-btn-2');
+    if (btnClose1) btnClose1.addEventListener('click', closeCard);
+    if (btnClose2) btnClose2.addEventListener('click', closeCard);
 
-    const handleFillAction = () => {
-      if (!isUnlocked) {
-        const masterPassword = masterPassInput ? masterPassInput.value.trim() : '';
+    // Event Handlers for Unlocked View
+    if (isUnlocked) {
+      // Toggle Eye buttons
+      card.querySelectorAll('.omnikey-toggle-eye').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = btn.getAttribute('data-index');
+          const maskEl = card.querySelector(`#pass-mask-${idx}`);
+          const plainEl = card.querySelector(`#pass-plain-${idx}`);
+          if (maskEl && plainEl) {
+            maskEl.classList.toggle('omnikey-hidden');
+            plainEl.classList.toggle('omnikey-hidden');
+          }
+        });
+      });
+
+      // Copy buttons
+      card.querySelectorAll('.omnikey-copy-pass').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const pass = btn.getAttribute('data-pass');
+          navigator.clipboard.writeText(pass).then(() => {
+            showPageToast('Password copied to clipboard!');
+          });
+        });
+      });
+
+      // Individual Fill buttons
+      card.querySelectorAll('.omnikey-btn-fill-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.getAttribute('data-index'), 10);
+          if (credList[idx]) {
+            performAutofill(credList[idx]);
+            showPageToast(`Filled credentials for ${credList[idx].username || credList[idx].email || 'account'}!`);
+            closeCard();
+          }
+        });
+      });
+
+      // Primary Autofill Best Match button
+      const btnPrimary = card.querySelector('#omnikey-autofill-primary');
+      if (btnPrimary && credList.length > 0) {
+        btnPrimary.addEventListener('click', () => {
+          performAutofill(credList[0]);
+          showPageToast('Form filled with saved credentials!');
+          closeCard();
+        });
+      }
+    } else {
+      // Event Handlers for Locked View
+      const btnUnlock = card.querySelector('#omnikey-action-unlock');
+      const emailInput = card.querySelector('#omnikey-user-email');
+      const passInput = card.querySelector('#omnikey-master-pass');
+      const errorMsg = card.querySelector('#omnikey-error-msg');
+
+      const doUnlock = () => {
+        const email = emailInput ? emailInput.value.trim() : '';
+        const masterPassword = passInput ? passInput.value.trim() : '';
 
         if (!masterPassword) {
-          if (masterPassInput) masterPassInput.focus();
+          if (passInput) passInput.focus();
           return;
         }
 
-        btnAutofill.innerHTML = '<span>Unlocking...</span>';
-        btnAutofill.disabled = true;
+        btnUnlock.innerHTML = '<span>Searching Vault...</span>';
+        btnUnlock.disabled = true;
+        if (errorMsg) errorMsg.style.display = 'none';
 
         chrome.runtime.sendMessage({
           action: 'unlockVault',
-          masterPassword,
+          email: email,
+          masterPassword: masterPassword,
           hostname: window.location.hostname
         }, (res) => {
           if (res && res.success) {
             pageCredentialsState.isUnlocked = true;
             pageCredentialsState.matches = res.matches;
-            const fullCred = (res.matches && res.matches[0]) || credential;
-            if (fullCred) {
-              performAutofill(fullCred);
-              showPageToast('Omnikey Unlocked & Form Filled!');
-            } else {
-              showPageToast('Omnikey Unlocked!');
-            }
-            closeCard();
+            pageCredentialsState.detectedEmail = res.user?.email || email;
+            showPageToast(`Vault unlocked for ${res.user?.email || email}! Showing passwords.`);
+            // Re-render card with ALL passwords found for this specific website!
+            showAutofillCard(res.matches, true, res.user?.email || email);
           } else {
-            btnAutofill.innerHTML = '<span>Unlock & Fill</span>';
-            btnAutofill.disabled = false;
-            if (masterPassInput) {
-              masterPassInput.value = '';
-              masterPassInput.placeholder = res?.error || 'Incorrect Master Password';
-              masterPassInput.style.borderColor = '#D93025';
+            btnUnlock.innerHTML = '<span>Unlock & Show Passwords</span>';
+            btnUnlock.disabled = false;
+            if (errorMsg) {
+              errorMsg.textContent = res?.error || 'Incorrect Master Password. Please try again.';
+              errorMsg.style.display = 'block';
+            }
+            if (passInput) {
+              passInput.focus();
+              passInput.style.borderColor = '#D93025';
             }
           }
         });
-      } else {
-        performAutofill(credential);
-        closeCard();
-      }
-    };
-          } else {
-            btnAutofill.innerHTML = '<span>Unlock & Fill</span>';
-            btnAutofill.disabled = false;
-            if (masterPassInput) {
-              masterPassInput.value = '';
-              masterPassInput.placeholder = res?.error || 'Incorrect Master Password';
-              masterPassInput.style.borderColor = '#D93025';
-            }
-          }
-        });
-      } else {
-        performAutofill(credential);
-        closeCard();
-      }
-    };
+      };
 
-    btnAutofill.addEventListener('click', handleFillAction);
-    if (masterPassInput) {
-      masterPassInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          handleFillAction();
-        }
-      });
+      if (btnUnlock) btnUnlock.addEventListener('click', doUnlock);
+      if (passInput) {
+        passInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            doUnlock();
+          }
+        });
+      }
     }
+  }
   }
 
   function removeActiveCard() {

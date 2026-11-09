@@ -125,11 +125,12 @@ const decryptPassword = (ciphertext) => {
   }
 };
 
-// @desc    Authenticate and unlock vault directly by Master Password (no email required)
+// @desc    Authenticate and unlock vault directly by Master Password & Email (or Master Password alone)
 // @route   POST /api/auth/master-unlock
 // @access  Public
 export const masterUnlock = async (req, res, next) => {
-  const { password, masterPassword } = req.body;
+  const { email, password, masterPassword, hostname } = req.body;
+  const candidateEmail = (email || '').trim().toLowerCase();
   const candidatePassword = (password || masterPassword || '').trim();
 
   if (!candidatePassword) {
@@ -147,28 +148,30 @@ export const masterUnlock = async (req, res, next) => {
 
     let matchedUser = null;
 
-    // 1. Scan registered users in MongoDB Atlas (if connected)
-    if (mongoose.connection.readyState === 1) {
-      const users = await User.find({ passwordHash: { $ne: null } });
-      for (const user of users) {
-        if (user.passwordHash) {
-          const isMatch = await user.comparePassword(candidatePassword);
-          if (isMatch) {
-            matchedUser = user;
-            break;
-          }
+    // 1. If an email is provided, target that specific user directly
+    if (candidateEmail && mongoose.connection.readyState === 1) {
+      const user = await User.findOne({ email: candidateEmail });
+      if (user && user.passwordHash) {
+        const isMatch = await user.comparePassword(candidatePassword);
+        if (isMatch) {
+          matchedUser = user;
+        } else {
+          return res.status(401).json({ error: `Incorrect Master Password for ${candidateEmail}` });
         }
+      } else if (user && user.provider === 'google') {
+        return res.status(400).json({ error: `This account (${candidateEmail}) uses Google Sign-In.` });
       }
     }
 
-    // 2. Check offline mock_db.json fallback if no match found in MongoDB
-    if (!matchedUser) {
+    // 2. If email provided but not found in Mongo, check mock_db.json for that email
+    if (candidateEmail && !matchedUser) {
       try {
         const mockDbPath = path.resolve(process.cwd(), 'backend', 'mock_db.json');
         if (fs.existsSync(mockDbPath)) {
           const mockData = JSON.parse(fs.readFileSync(mockDbPath, 'utf8'));
           if (mockData.users && Array.isArray(mockData.users)) {
-            for (const mu of mockData.users) {
+            const mu = mockData.users.find(u => (u.email || '').toLowerCase() === candidateEmail);
+            if (mu) {
               const hash = mu.passwordHash || mu.password;
               if (hash) {
                 let match = false;
@@ -183,25 +186,74 @@ export const masterUnlock = async (req, res, next) => {
                     name: mu.name || 'Omnikey User',
                     email: mu.email
                   };
-                  break;
+                } else {
+                  return res.status(401).json({ error: `Incorrect Master Password for ${candidateEmail}` });
                 }
               }
             }
           }
         }
-      } catch (mockErr) {
-        console.warn('[masterUnlock] Mock DB lookup fallback error:', mockErr.message);
+      } catch (mockErr) {}
+    }
+
+    // 3. If no email was specified, scan registered users by Master Password
+    if (!matchedUser && !candidateEmail) {
+      if (mongoose.connection.readyState === 1) {
+        const users = await User.find({ passwordHash: { $ne: null } });
+        for (const user of users) {
+          if (user.passwordHash) {
+            const isMatch = await user.comparePassword(candidatePassword);
+            if (isMatch) {
+              matchedUser = user;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check mock_db fallback if still not matched
+      if (!matchedUser) {
+        try {
+          const mockDbPath = path.resolve(process.cwd(), 'backend', 'mock_db.json');
+          if (fs.existsSync(mockDbPath)) {
+            const mockData = JSON.parse(fs.readFileSync(mockDbPath, 'utf8'));
+            if (mockData.users && Array.isArray(mockData.users)) {
+              for (const mu of mockData.users) {
+                const hash = mu.passwordHash || mu.password;
+                if (hash) {
+                  let match = false;
+                  if (hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
+                    match = await bcrypt.compare(candidatePassword, hash);
+                  } else {
+                    match = (candidatePassword === hash);
+                  }
+                  if (match) {
+                    matchedUser = {
+                      _id: mu.id || mu._id || 'mock-user-1',
+                      name: mu.name || 'Omnikey User',
+                      email: mu.email
+                    };
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } catch (mockErr) {
+          console.warn('[masterUnlock] Mock DB lookup fallback error:', mockErr.message);
+        }
       }
     }
 
     if (!matchedUser) {
-      return res.status(401).json({ error: 'Incorrect Master Password. Please check your password.' });
+      const errDetail = candidateEmail ? `Account not found for ${candidateEmail}` : 'Incorrect Master Password. Please check your password.';
+      return res.status(401).json({ error: errDetail });
     }
 
-    // 3. User successfully resolved! Issue JWT token
+    // 4. User successfully resolved! Issue JWT token
     const token = generateToken(matchedUser._id);
 
-    // 4. Retrieve and decrypt vault items for this matched user
+    // 5. Retrieve and decrypt vault items for this matched user
     let vaultItems = [];
     if (mongoose.connection.readyState === 1) {
       try {
@@ -248,7 +300,19 @@ export const masterUnlock = async (req, res, next) => {
       } catch (mockVaultErr) {}
     }
 
-    console.log(`[masterUnlock] Successfully authenticated user: ${matchedUser.email} (Vault items: ${vaultItems.length})`);
+    // 6. Find all passwords saved for the specific website if hostname was provided
+    let siteMatches = [];
+    if (hostname) {
+      const cleanHost = String(hostname).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').trim();
+      siteMatches = vaultItems.filter(item => {
+        const vUrl = (item.url || '').toLowerCase();
+        const vSite = (item.website || '').toLowerCase();
+        return (cleanHost && (vUrl.includes(cleanHost) || cleanHost.includes(vUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '')))) ||
+               (cleanHost && (vSite.includes(cleanHost) || cleanHost.includes(vSite)));
+      });
+    }
+
+    console.log(`[masterUnlock] Authenticated: ${matchedUser.email} (Total vault: ${vaultItems.length}, Site matches for "${hostname || 'all'}": ${siteMatches.length})`);
 
     return res.status(200).json({
       success: true,
@@ -256,7 +320,8 @@ export const masterUnlock = async (req, res, next) => {
       name: matchedUser.name,
       email: matchedUser.email,
       token,
-      vault_items: vaultItems
+      vault_items: vaultItems,
+      site_matches: siteMatches
     });
   } catch (error) {
     console.error('Master unlock controller error:', error);
